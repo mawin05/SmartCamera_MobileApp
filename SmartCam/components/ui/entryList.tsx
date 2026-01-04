@@ -1,10 +1,33 @@
 import { ALERTS } from "@/constants/object";
 import { SPACING } from "@/constants/theme";
-import React from "react";
-import { FlatList, StyleSheet } from "react-native";
+import { AlertItem } from "@/constants/types";
+import { fetchAlerts } from "@/services/alertService";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import AlertMin from "./alertMin";
 
 function EntryList() {
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      const data = await fetchAlerts();
+      setAlerts(data);
+      setIsLoading(false);
+    };
+
+    loadData();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center" }}>
+        <ActivityIndicator size="large" color="coral" />
+      </View>
+    );
+  }
+
   return (
     <FlatList
       data={ALERTS}
