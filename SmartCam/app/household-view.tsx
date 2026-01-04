@@ -1,14 +1,14 @@
-import EntryList from "@/components/ui/entryList";
+import UserList from "@/components/ui/userList";
 import { GlobalStyles } from "@/styles/GlobalStyles";
 import React from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-function FootageView() {
+function HouseholdView() {
   return (
     <SafeAreaView style={GlobalStyles.container}>
-      <EntryList></EntryList>
+      <UserList></UserList>
     </SafeAreaView>
   );
 }
 
-export default FootageView;
+export default HouseholdView;

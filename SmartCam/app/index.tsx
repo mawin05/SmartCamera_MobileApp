@@ -10,11 +10,11 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container}>
       <MainButton
         iconName="camera"
-        onPress={() => router.push("/footage-view")}
+        onPress={() => router.push("/alerts-view")}
       ></MainButton>
       <MainButton
-        iconName="settings"
-        onPress={() => router.push("/alerts-view")}
+        iconName="home"
+        onPress={() => router.push("/household-view")}
       />
     </SafeAreaView>
   );

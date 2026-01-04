@@ -19,7 +19,7 @@ export const GlobalStyles = StyleSheet.create({
     borderRadius: 15, // Nieco mniejsze zaokrąglenie wygląda lepiej na paskach
 
     flexDirection: "row", // Przygotowanie pod ikonę obok tekstu
-    justifyContent: "flex-start", // Tekst zaczyna się od lewej
+    justifyContent: "space-between", // Tekst zaczyna się od lewej
     alignItems: "center",
     backgroundColor: COLORS.primary,
 
@@ -31,5 +31,27 @@ export const GlobalStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+  },
+  text_primary: {
+    fontSize: 40,
+    fontWeight: "600",
+    color: "#ffff",
+  },
+  text_secondary: {
+    fontSize: 30,
+    fontWeight: "600",
+    color: "#ffff",
+  },
+
+  pressed: {
+    backgroundColor: COLORS.secondary,
+    transform: [{ scale: 0.98 }],
+  },
+
+  mark: {
+    position: "absolute", // Klucz do sukcesu!
+    top: -8, // Ujemna wartość sprawia, że wystaje do góry
+    right: -8, // Ujemna wartość sprawia, że wystaje w prawo
+    zIndex: 1,
   },
 });
