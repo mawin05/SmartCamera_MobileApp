@@ -7,9 +7,10 @@ import NotificationMark from "./notificationMark";
 
 interface Props {
   alert: AlertItem;
+  markAsRead: (id: string) => void;
 }
 
-function AlertMin({ alert }: Props) {
+function AlertMin({ alert, markAsRead }: Props) {
   const router = useRouter();
 
   return (
@@ -18,9 +19,10 @@ function AlertMin({ alert }: Props) {
         GlobalStyles.singleEntry,
         pressed && GlobalStyles.pressed,
       ]}
-      onPress={() =>
-        router.push({ pathname: "/alert-details", params: { id: alert.id } })
-      }
+      onPress={() => {
+        markAsRead(alert.id);
+        router.push({ pathname: "/alert-details", params: { id: alert.id } });
+      }}
     >
       <Text style={GlobalStyles.text_secondary}>{alert.title}</Text>
       <Text style={GlobalStyles.text_secondary}>{alert.time}</Text>

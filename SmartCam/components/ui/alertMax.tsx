@@ -1,26 +1,66 @@
-import { ALERTS } from "@/constants/object";
 import { COLORS, SPACING } from "@/constants/theme";
+import { AlertItem } from "@/constants/types";
+import { getAlertsFromCache } from "@/services/alertService"; // Importujemy Twój cache
 import { GlobalStyles } from "@/styles/GlobalStyles";
 import { useLocalSearchParams } from "expo-router";
-import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
 import CircleButton from "./circleButton";
 import NotificationMark from "./notificationMark";
 
 function AlertMax() {
   const { id } = useLocalSearchParams();
-  const alert = ALERTS.find((a) => a.id === id);
+  const [alert, setAlert] = useState<AlertItem | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadAlert = async () => {
+      const cachedAlerts = await getAlertsFromCache();
+      if (cachedAlerts) {
+        const found = cachedAlerts.find((a) => a.id === id);
+        setAlert(found || null);
+      }
+      setLoading(false);
+    };
+
+    loadAlert();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <ActivityIndicator
+        size="large"
+        color={COLORS.secondary}
+        style={{ flex: 1 }}
+      />
+    );
+  }
+
+  if (!alert) {
+    return (
+      <View style={styles.container}>
+        <Text style={GlobalStyles.text_primary}>Nie znaleziono alertu</Text>
+      </View>
+    );
+  }
+
+  // Obsługa źródła obrazu: URL z serwera lub lokalny require z mocka
+  const imageSource =
+    typeof alert.image === "string" ? { uri: alert.image } : alert.image;
 
   return (
     <View style={styles.container}>
-      <Text style={GlobalStyles.text_primary}>{alert?.title}</Text>
-      <Text style={GlobalStyles.text_secondary}>{alert?.time}</Text>
-      <Image source={alert?.image} style={styles.image}></Image>
+      <Text style={GlobalStyles.text_primary}>{alert.title}</Text>
+      <Text style={GlobalStyles.text_secondary}>{alert.time}</Text>
+
+      <Image source={imageSource} style={styles.image} />
+
       <View style={styles.button_container}>
-        <CircleButton iconName="trash"></CircleButton>
-        <CircleButton iconName="settings"></CircleButton>
+        <CircleButton iconName="trash" />
+        <CircleButton iconName="settings" />
       </View>
-      {alert?.isNew && (
+
+      {alert.isNew && (
         <View style={GlobalStyles.mark}>
           <NotificationMark />
         </View>

@@ -1,4 +1,7 @@
 import { AlertItem } from "@/constants/types";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const API_URL = "http://192.168.1.22:8000";
 
 const MOCK_ALERTS: AlertItem[] = [
   {
@@ -38,10 +41,52 @@ const MOCK_ALERTS: AlertItem[] = [
   },
 ];
 
-export const fetchAlerts = async (): Promise<AlertItem[]> => {
+const STORAGE_KEY = "@alerts_cache";
+
+export const saveAlertsToCache = async (alerts: AlertItem[]) => {
+  try {
+    const jsonValue = JSON.stringify(alerts);
+    await AsyncStorage.setItem(STORAGE_KEY, jsonValue);
+  } catch (e) {
+    console.log("Cache error:", e);
+  }
+};
+
+export const getAlertsFromCache = async (): Promise<AlertItem[] | null> => {
+  try {
+    const jsonValue = await AsyncStorage.getItem(STORAGE_KEY);
+    return jsonValue != null ? JSON.parse(jsonValue) : null;
+  } catch (e) {
+    console.log("Cahce error:", e);
+    return null;
+  }
+};
+
+export const fetchAlertsMock = async (): Promise<AlertItem[]> => {
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve(MOCK_ALERTS);
-    }, 1500); // Udajemy, że serwer myśli przez 1.5 sekundy
+    }, 500);
   });
+};
+
+export const fetchAlerts = async (): Promise<AlertItem[]> => {
+  try {
+    const response = await fetch(`${API_URL}/alerts`);
+    if (!response.ok) throw new Error("Problem z połączeniem");
+    return await response.json();
+  } catch (error) {
+    console.error("Błąd pobierania danych z FastAPI:", error);
+    return [];
+  }
+};
+
+export const markAsReadOnServer = async (id: string) => {
+  try {
+    await fetch(`${API_URL}/alerts/${id}/read`, {
+      method: "POST",
+    });
+  } catch (error) {
+    console.error("Nie udało się zaktualizować statusu na serwerze");
+  }
 };
