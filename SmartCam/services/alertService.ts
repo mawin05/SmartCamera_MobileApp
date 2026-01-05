@@ -62,6 +62,36 @@ export const getAlertsFromCache = async (): Promise<AlertItem[] | null> => {
   }
 };
 
+export const deleteAlertFromCache = async (id: string) => {
+  try {
+    const currentAlerts = await getAlertsFromCache();
+    if (currentAlerts) {
+      const updatedAlerts = currentAlerts.filter((alert) => alert.id !== id);
+      await saveAlertsToCache(updatedAlerts);
+      return updatedAlerts;
+    }
+  } catch (e) {
+    throw e;
+  }
+};
+
+export const deleteAlert = async (id: string) => {
+  try {
+    const response = await fetch(`${API_URL}/alerts/${id}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || "Error");
+    }
+
+    return await response.json();
+  } catch (e) {
+    throw e;
+  }
+};
+
 export const fetchAlertsMock = async (): Promise<AlertItem[]> => {
   return new Promise((resolve) => {
     setTimeout(() => {

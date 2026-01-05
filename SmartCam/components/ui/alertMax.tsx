@@ -1,17 +1,31 @@
 import { COLORS, SPACING } from "@/constants/theme";
 import { AlertItem } from "@/constants/types";
-import { getAlertsFromCache } from "@/services/alertService"; // Importujemy Twój cache
+import {
+  deleteAlert,
+  deleteAlertFromCache,
+  getAlertsFromCache,
+} from "@/services/alertService"; // Importujemy Twój cache
 import { GlobalStyles } from "@/styles/GlobalStyles";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
 import CircleButton from "./circleButton";
 import NotificationMark from "./notificationMark";
 
 function AlertMax() {
+  const router = useRouter();
+
   const { id } = useLocalSearchParams();
   const [alert, setAlert] = useState<AlertItem | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const handleDelete = async () => {
+    if (typeof id == "string") {
+      await deleteAlert(id);
+      await deleteAlertFromCache(id);
+      router.back();
+    }
+  };
 
   useEffect(() => {
     const loadAlert = async () => {
@@ -56,8 +70,8 @@ function AlertMax() {
       <Image source={imageSource} style={styles.image} />
 
       <View style={styles.button_container}>
-        <CircleButton iconName="trash" />
-        <CircleButton iconName="settings" />
+        <CircleButton iconName="trash" onPress={handleDelete} />
+        <CircleButton iconName="download" />
       </View>
 
       {alert.isNew && (
@@ -91,6 +105,8 @@ const styles = StyleSheet.create({
     height: 300,
     borderRadius: 20,
     marginVertical: SPACING.l,
+    borderWidth: 9,
+    borderColor: COLORS.background,
   },
 });
 

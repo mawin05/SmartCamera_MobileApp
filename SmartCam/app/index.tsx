@@ -1,4 +1,5 @@
 import MainButton from "@/components/ui/main-button";
+import { COLORS } from "@/constants/theme";
 import { useRouter } from "expo-router";
 import { StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -25,7 +26,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "white",
+    backgroundColor: COLORS.background,
   },
 
   title: {

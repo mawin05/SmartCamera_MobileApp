@@ -8,9 +8,9 @@ interface Props {
   onPress?: () => void;
 }
 
-function CircleButton({ iconName }: Props) {
+function CircleButton({ iconName, onPress }: Props) {
   return (
-    <Pressable style={styles.circle}>
+    <Pressable style={styles.circle} onPress={onPress}>
       <Ionicons name={iconName} color={"#ffff"} size={70}></Ionicons>
     </Pressable>
   );
@@ -25,6 +25,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: SPACING.m,
+    marginVertical: SPACING.m,
   },
 });
 

@@ -1,3 +1,4 @@
+import { COLORS } from "@/constants/theme";
 import { User } from "@/constants/types";
 import { GlobalStyles } from "@/styles/GlobalStyles";
 import React from "react";
@@ -8,6 +9,9 @@ interface Props {
 }
 
 function UserEntry({ user }: Props) {
+  const imageSource =
+    typeof user.image === "string" ? { uri: user.image } : user.image;
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -15,7 +19,7 @@ function UserEntry({ user }: Props) {
         pressed && GlobalStyles.pressed,
       ]}
     >
-      <Image source={user.image} style={styles.image}></Image>
+      <Image source={imageSource} style={styles.image}></Image>
       <Text style={GlobalStyles.text_primary}>{user.name}</Text>
     </Pressable>
   );
@@ -26,6 +30,8 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 10,
+    borderWidth: 3,
+    borderColor: COLORS.background,
   },
 });
 

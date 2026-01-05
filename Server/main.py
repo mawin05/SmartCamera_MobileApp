@@ -1,5 +1,6 @@
 import os
-from fastapi import FastAPI
+import shutil
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -30,6 +31,11 @@ class Alert(BaseModel):
     image: str
     isNew: bool
 
+class User(BaseModel):
+    id: str
+    name: str
+    image: str
+
 # Tymczasowa "baza danych" w pamięci RAM
 alerts_db = [
     {
@@ -56,7 +62,7 @@ alerts_db = [
     {
         "id": "4",
         "title": "Zupstein",
-        "time": "ku:tas",
+        "time": "11:11",
         "image": f"http://{IP}:8000/images/zupa.jpg",
         "isNew": True
     },
@@ -76,6 +82,29 @@ alerts_db = [
     },
 ]
 
+users_db = [
+    {
+        "id": "1",
+        "name": "Maciej",
+        "image": f"http://{IP}:8000/images/maciej.jpg"
+    },
+    {
+        "id": "2",
+        "name": "Kacper",
+        "image": f"http://{IP}:8000/images/kacper.jpg"
+    },
+    {
+        "id": "3",
+        "name": "Lewy",
+        "image": f"http://{IP}:8000/images/lewy.jpg"
+    },
+    {
+        "id": "4",
+        "name": "Zupa",
+        "image": f"http://{IP}:8000/images/zupa.jpg"
+    },
+]
+
 @app.get("/alerts", response_model=List[Alert])
 async def get_alerts():
     """Zwraca listę wszystkich alertów."""
@@ -89,3 +118,40 @@ async def mark_as_read(alert_id: str):
             alert["isNew"] = False
             return {"status": "success", "message": f"Alert {alert_id} przeczytany"}
     return {"status": "error", "message": "Nie znaleziono alertu"}
+
+@app.get("/users", response_model=List[User])
+async def get_users():
+    """Zwraca listę wszystkich użytkowników."""
+    return users_db
+
+@app.post("/users")
+async def create_user(name: str = Form(...), file: UploadFile = File(...)):
+    file_path = f"images/{file.filename}"
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    image_url = f"http://{IP}:8000/images/{file.filename}"
+
+    new_user = {
+        "id": str(len(users_db)+1),
+        "name": name,
+        "image": image_url
+    }
+    users_db.append(new_user)
+
+    return new_user
+
+@app.delete("/alerts/{alert_id}")
+async def dlete_alert(alert_id: str):
+    global alerts_db
+
+    alert_to_remove = next((a for a in alerts_db if str(a["id"]) == str(alert_id)), None)
+
+    if alert_to_remove is None:
+        raise HTTPException(status_code=404, detail="Alert nie znaleziony")
+    
+    alerts_db = [a for a in alerts_db if str(a["id"]) != str(alert_id)]
+
+    print(f"DEBUG: Usunięto {alert_id}. Pozostało elementów: {len(alerts_db)}")
+    
+    return {"message": f"Alert {alert_id} was removed", "deleted_id": alert_id}

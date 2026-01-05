@@ -13,7 +13,7 @@ export const GlobalStyles = StyleSheet.create({
     width: "100%",
     // ZAMIAST height: "15%", używamy paddingu i opcjonalnie minHeight
     paddingVertical: SPACING.m, // Odstęp góra-dół
-    paddingHorizontal: SPACING.l, // Odstęp lewo-prawo
+    paddingHorizontal: SPACING.m, // Odstęp lewo-prawo
     minHeight: 80, // Minimalna wysokość, żeby zawsze dobrze wyglądało
 
     borderRadius: 15, // Nieco mniejsze zaokrąglenie wygląda lepiej na paskach

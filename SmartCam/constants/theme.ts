@@ -1,7 +1,7 @@
 export const COLORS = {
-  primary: "coral",
-  secondary: "#F34444",
-  background: "#ffff",
+  primary: "#1B628E",
+  secondary: "#0B2638",
+  background: "#363864",
 };
 
 export const SPACING = {

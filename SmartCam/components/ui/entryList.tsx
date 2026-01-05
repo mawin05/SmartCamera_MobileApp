@@ -5,7 +5,8 @@ import {
   getAlertsFromCache,
   saveAlertsToCache,
 } from "@/services/alertService";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import React, { useCallback, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import AlertMin from "./alertMin";
 
@@ -17,15 +18,18 @@ function EntryList() {
   const loadData = async (forceRefresh = false) => {
     if (forceRefresh) setRefreshing(true);
 
-    // 1. Pobierz świeże dane z "serwera"
-    const freshData = await fetchAlerts();
-
-    // 2. Zaktualizuj stan i pamięć telefonu
-    setAlerts(freshData);
-    await saveAlertsToCache(freshData);
-
-    setIsLoading(false);
-    setRefreshing(false);
+    try {
+      const freshData = await fetchAlerts();
+      if (freshData && freshData.length > 0) {
+        setAlerts(freshData);
+        await saveAlertsToCache(freshData);
+      }
+    } catch (error) {
+      console.error("Błąd pobierania:", error);
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
   };
 
   const handleRefresh = () => {
@@ -40,31 +44,22 @@ function EntryList() {
     await saveAlertsToCache(updatedAlerts);
   };
 
-  useEffect(() => {
-    const loadInitialData = async () => {
-      setIsLoading(true);
+  useFocusEffect(
+    useCallback(() => {
+      const updateFromCache = async () => {
+        const cachedData = await getAlertsFromCache();
 
-      // 1. Najpierw sprawdź, co mamy w pamięci telefonu
-      const cachedData = await getAlertsFromCache();
+        if (cachedData && cachedData.length > 0) {
+          setAlerts(cachedData);
+          setIsLoading(false);
+        } else {
+          await loadData();
+        }
+      };
 
-      // 2. LOGIKA: Jeśli mamy coś w cache, to to pokazujemy i KONIEC.
-      // Nie pobieramy freshData, bo one nadpiszą nam status "przeczytane".
-      if (cachedData && cachedData.length > 0) {
-        setAlerts(cachedData);
-        setIsLoading(false);
-        return; // Wychodzimy z funkcji, nie idziemy dalej
-      }
-
-      // 3. Jeśli cache jest pusty (pierwsze włączenie aplikacji),
-      // dopiero wtedy pobieramy dane z "serwera"
-      const freshData = await fetchAlerts();
-      await saveAlertsToCache(freshData);
-      setAlerts(freshData);
-      setIsLoading(false);
-    };
-
-    loadInitialData();
-  }, []);
+      updateFromCache();
+    }, [])
+  );
 
   if (isLoading) {
     return (
@@ -84,8 +79,8 @@ function EntryList() {
       onRefresh={handleRefresh}
       refreshing={isRefreshing}
       contentContainerStyle={styles.listContent}
-      style={{ flex: 1, width: "100%" }}
-    ></FlatList>
+      style={{ flex: 1, width: "100%", height: "100%" }}
+    />
   );
 }
 
