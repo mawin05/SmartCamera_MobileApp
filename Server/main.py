@@ -7,15 +7,13 @@ from pydantic import BaseModel
 from typing import List
 
 app = FastAPI()
-IP = "192.168.1.22"
+IP = "192.168.1.11"
 
 if not os.path.exists("images"):
     os.makedirs("images")
 
 app.mount("/images", StaticFiles(directory="images"), name="images")
 
-# KONFIGURACJA CORS
-# Pozwala Twojej aplikacji React Native łączyć się z tym serwerem
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,7 +21,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Definicja modelu danych (taka sama jak Twoje AlertItem w TypeScript)
 class Alert(BaseModel):
     id: str
     title: str
@@ -31,12 +28,16 @@ class Alert(BaseModel):
     image: str
     isNew: bool
 
+class PseudoAlert(BaseModel):
+    name: str
+    time: str
+    image: str
+
 class User(BaseModel):
     id: str
     name: str
     image: str
 
-# Tymczasowa "baza danych" w pamięci RAM
 alerts_db = [
     {
         "id": "1",
@@ -118,6 +119,20 @@ async def mark_as_read(alert_id: str):
             alert["isNew"] = False
             return {"status": "success", "message": f"Alert {alert_id} przeczytany"}
     return {"status": "error", "message": "Nie znaleziono alertu"}
+
+@app.post("/alerts")
+async def add_alert(item: PseudoAlert):
+    new_alert = {
+        "id": str(len(alerts_db)+1),  # TODO deleting alerts results in duplicated ids -> different id generation needed
+        "title": item.name,
+        "time": item.time,
+        "image": f"http://{IP}:8000/images/captured/{item.image}",
+        "isNew": True
+    }
+
+    alerts_db.append(new_alert)
+
+    return new_alert
 
 @app.get("/users", response_model=List[User])
 async def get_users():

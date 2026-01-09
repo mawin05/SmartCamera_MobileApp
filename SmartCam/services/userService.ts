@@ -1,7 +1,7 @@
 import { User } from "@/constants/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const API_URL = "http://192.168.1.22:8000";
+const API_URL = "http://192.168.1.11:8000";
 
 const STORAGE_KEY = "@users_cache";
 

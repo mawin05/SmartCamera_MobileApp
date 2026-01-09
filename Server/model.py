@@ -1,11 +1,36 @@
 import face_recognition
+from fastapi import FastAPI
 import os
 import numpy as np
 import cv2
+import requests
+from datetime import datetime
 
-# --- KONFIGURACJA ---
-DIRECTORY = "images"  # Folder ze zdjęciami znanych osób
-TOLERANCE = 0.50      # Im niższa wartość, tym surowsze rozpoznawanie
+API_URL = "http://localhost:8000/alerts"
+
+DIRECTORY = "images/users" 
+TOLERANCE = 0.50
+FILEPATH = "test_photo.jpg"
+
+app = FastAPI()
+
+@app.post("/recognize")
+async def recognize_face():
+    result = identify_face("test_photo.jpg", known_encodes, known_names)
+
+    print(result)
+
+    date = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    image_name = f"{result}-{date}.jpg"
+
+    alert_data = {
+        "title": result,
+        "time": date,
+        "image": image_name
+    }
+
+    requests.post(API_URL, json=alert_data)
+
 
 def get_known_encodings(directory):
     known_encodes = []
@@ -22,16 +47,13 @@ def get_known_encodings(directory):
     return known_encodes, known_names
 
 def identify_face(input_image_path, known_encodes, known_names):
-    # 1. Wczytaj zdjęcie testowe
     unknown_image = face_recognition.load_image_file(input_image_path)
     
-    # 2. Znajdź kodowanie twarzy na nowym zdjęciu
     unknown_encodings = face_recognition.face_encodings(unknown_image)
     
     if len(unknown_encodings) == 0:
         return "no_face_detected"
 
-    # 3. Porównaj z bazą (analizujemy pierwszą znalezioną twarz)
     face_to_check = unknown_encodings[0]
     distances = face_recognition.face_distance(known_encodes, face_to_check)
     
@@ -42,11 +64,24 @@ def identify_face(input_image_path, known_encodes, known_names):
     
     return "unknown"
 
-# --- WYKONANIE ---
-# To robisz raz przy starcie serwera (ładowanie bazy)
 known_encodes, known_names = get_known_encodings(DIRECTORY)
 
-# To wywołujesz, gdy dostaniesz zdjęcie
 result = identify_face("test_photo.jpg", known_encodes, known_names)
 
-print(result) # Wypisze np. "Maciej", "unknown" lub "no_face_detected"
+print(result)
+
+date = datetime.now().strftime("%Y-%m-%d_%H-%M")
+image_name = f"{result}-{date}.jpg"
+
+alert_data = {
+    "name": result,
+    "time": date,
+    "image": image_name
+}
+
+res = requests.post(API_URL, json=alert_data)
+
+print(res)
+
+# Camera script needs to wait for movement, take photo and save it, call face recognition from this file by API 
+# This file recognizes it and posts the result to main.py 
