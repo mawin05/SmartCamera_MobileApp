@@ -6,10 +6,10 @@ import requests
 
 TEMP_PHOTO = "temp_capture.jpg"
 load_dotenv()
-MODEL_URL = os.environ.get("MODEL_URL")
+SERVER_URL = os.environ.get("SERVER_URL")
 
-if not MODEL_URL:
-    raise RuntimeError("MODEL_URL not found, check README for instructions")
+if not SERVER_URL:
+    raise RuntimeError("SERVER_URL not found, check README for instructions")
 
 def take_photo():
     if os.path.exists(TEMP_PHOTO):
@@ -40,9 +40,9 @@ def send_to_model():
     try:
         with open(TEMP_PHOTO, "rb") as f:
             files = {"file": (TEMP_PHOTO, f, "image/jpeg")}
-            print(f"📡 Wysyłanie do modelu: {MODEL_URL}/recognize...")
+            print(f"📡 Wysyłanie do modelu: {SERVER_URL}/recognize...")
 
-            response = requests.post(f"{MODEL_URL}/recognize", files=files)
+            response = requests.post(f"{SERVER_URL}/recognize", files=files)
 
             if response.status_code == 200:
                 print("🚀 Model odebrał zdjęcie i rozpoczął analizę.")

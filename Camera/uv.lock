@@ -10,7 +10,7 @@ dependencies = [
     { name = "dotenv" },
     { name = "gpiozero" },
     { name = "requests" },
-    { name = "rpi-lgpio" },
+    { name = "rpi-lgpio", marker = "platform_machine == 'aarch64'" },
 ]
 
 [package.metadata]
@@ -18,7 +18,7 @@ requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "gpiozero", specifier = ">=2.0.1" },
     { name = "requests", specifier = ">=2.33.1" },
-    { name = "rpi-lgpio", specifier = ">=0.6" },
+    { name = "rpi-lgpio", marker = "platform_machine == 'aarch64'", specifier = ">=0.6" },
 ]
 
 [[package]]

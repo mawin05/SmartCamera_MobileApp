@@ -1,5 +1,5 @@
 # Camera
-This module is responsible for the physical interface with the camera. It captures high-quality images and streams them directly to the AI Model for real-time analysis.
+This module is responsible for the physical interface with the camera and motion detection. It captures high-quality images triggered by a PIR sensor and streams them directly to the central Server for further processing.
 
 ---
 
@@ -8,14 +8,14 @@ This module is responsible for the physical interface with the camera. It captur
 1. **Prerequisites**
     - Python 3.13+
     - uv (Modern Python package manager - [Install uv](https://github.com/astral-sh/uv))
-    - Raspberry Pi with a compatible Camera Module and Raspberry Pi OS (not needed for simulation)
+    - Raspberry Pi with a compatible Camera Module, a PIR Motion Sensor (connected to GPIO 25), and Raspberry Pi OS (not needed for simulation)
 
 2. **Environment Configuration**
 
-    Create a .env file in this directory to store your network configuration (URL to connect with the device that runs the model):
+    Create a `.env` file in this directory to store your network configuration (URL to connect with the central Server):
     
     ```text
-    MODEL_URL=http://192.168.X.X:8001
+    SERVER_URL=http://192.168.X.X:8001
     ```
 
 3. **Installation**
@@ -26,13 +26,18 @@ This module is responsible for the physical interface with the camera. It captur
     ```
 4. **Running the Camera**
 
-    To take a single photo and send it for recognition:
+    To run the continuous motion detection loop (takes a photo automatically when movement is detected):
+    ```bash
+    uv run movement_det.py
+    ```
+    *(Optional)* To manually take a single photo and send it to the server without motion detection:
     ```bash
     uv run camera.py
     ```
+
 5. **Running the simulation**
 
-    Instead of running the camera.py script, you can run the **simulation.py** script. It takes the images in the **test_images** directory and acts like it took pictures of them and sends them to the server:
+    Instead of using physical hardware, you can run the **simulation.py** script. It iterates through images in the **test_images** directory and sends them to the server as if they were just captured:
     ```bash
     uv run simulation.py
     ```
