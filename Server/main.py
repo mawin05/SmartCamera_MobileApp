@@ -1,11 +1,11 @@
 import os
+import io
 import shutil
 import time
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 from typing import List
 from database import *
 from sqlalchemy.orm import selectinload
@@ -13,6 +13,8 @@ import httpx
 import asyncio
 from datetime import timedelta, datetime
 from contextlib import asynccontextmanager
+from PIL import Image, ImageDraw
+import json
 
 load_dotenv()
 MODEL_URL = os.environ.get("MODEL_URL")
@@ -69,6 +71,38 @@ app.add_middleware(
 def get_client(request: Request) -> httpx.AsyncClient:
     return request.app.state.client
 
+# Uploading a captured image
+def save_image_to_disk(filename: str, img_data):
+    filepath = f"data/images/captured/{filename}"
+    with open(filepath, "wb") as f:
+        if isinstance(img_data, bytes):
+            f.write(img_data)
+        else:
+            shutil.copyfileobj(img_data, f)
+
+# Creating an alert
+def add_alert(data: dict, session: Session):
+    title = data["title"]
+    if data["recognised_user_id"]:
+        user = session.get(User, data["recognised_user_id"])
+        if user:
+            title = f"Detected: {user.name}"
+
+    new_alert = Alert(
+        title=title,
+        time=data["time"],
+        date=data["date"],
+        image=data["image"],
+        isNew=data["isNew"],
+        recognised_user_id=data["recognised_user_id"],
+        embedding=data["embedding"]
+    )
+
+    session.add(new_alert)
+    session.commit()
+
+    return new_alert
+
 async def get_encoding_from_model(client: httpx.AsyncClient, file: UploadFile):
     try:
         files = {"file": (file.filename, await file.read(), file.content_type)}
@@ -110,7 +144,6 @@ async def add_user_image_logic(user_id: int, file: UploadFile, face_encoding: li
     filepath = f"{user_dir}/{filename}"
 
     os.makedirs(user_dir, exist_ok=True)
-
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
@@ -121,8 +154,7 @@ async def add_user_image_logic(user_id: int, file: UploadFile, face_encoding: li
     return new_template
 
 # Making it available for the model to get the embeddings of known users
-@app.get("/templates")
-async def get_templates(session: Session = Depends(get_session)):
+def get_templates(session: Session):
     statement = select(FaceTemplate)
     results = session.exec(statement).all()
     return [{"user_id": f.user_id, "embedding": f.embedding} for f in results]
@@ -249,39 +281,6 @@ async def get_user(user_id: int, session: Session = Depends(get_session)):
 async def get_alerts(session: Session = Depends(get_session)):
     return session.exec(select(Alert)).all()
 
-# Uploading a captured image
-@app.post("/upload-captured")
-async def upload_captured(file: UploadFile = File(...)):
-    filepath = f"data/images/captured/{file.filename}"
-
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    return {"status": "success"}
-
-# Creating an alert
-@app.post("/alerts")
-async def add_alert(item: AlertRead, session: Session = Depends(get_session)):
-    title = item.title
-    if item.recognised_user_id:
-        user = session.get(User, item.recognised_user_id)
-        if user:
-            title = f"Detected: {user.name}"
-    new_alert = Alert(
-        title=title,
-        time=item.time,
-        date=item.date,
-        image=item.image,   # TODO - might need some changes
-        recognised_user_id=item.recognised_user_id,
-        embedding=item.embedding
-    )
-
-    session.add(new_alert)
-    session.commit()
-    session.refresh(new_alert)
-
-    return new_alert
-
 # Checking alert's status from New to Read
 @app.post("/alerts/{alert_id}/read")
 async def mark_as_read(alert_id: int, session: Session = Depends(get_session)):
@@ -309,6 +308,74 @@ async def delete_alert(alert_id: int, session: Session = Depends(get_session)):
     return {"message": f"Alert {alert_id} was removed",
             "deleted_id": alert_id}
 
+@app.post("/recognize")
+async def recognize_face(file: UploadFile, client: httpx.AsyncClient = Depends(get_client), session: Session = Depends(get_session)):
+    contents = await file.read()
+    known_faces = get_templates(session)
+
+    response = await client.post(
+        f"{MODEL_URL}/identify",
+        data={"known_faces_json": json.dumps(known_faces)},
+        files={"file": (file.filename, contents, file.content_type)}
+    )
+
+    results = response.json().get("results", [])
+
+    now = datetime.now()
+    time_str = now.strftime("%H:%M:%S")
+    date_str = now.strftime("%d.%m.%Y")
+    time_stamp = now.strftime("%d.%m.%Y_%H-%M-%S")
+
+    if not results:
+        await file.seek(0)
+        image_name = f"empty_{time_stamp}.jpg"
+        save_image_to_disk(image_name, contents)
+        add_alert({
+            "title": "No face detected",
+            "time": time_str,
+            "date": date_str,
+            "image": image_name,
+            "isNew": True,
+            "recognised_user_id": None,
+            "embedding": None
+        }, session)
+        return {"status": "processed", "result": "no_faces"}
+
+    for i, res in enumerate(results):
+        user_id = res["user_id"]
+        top, right, bottom, left = res["location"]
+
+        if user_id is not None:
+            title = f"Detected User ID: {user_id}"
+            status = f"user_{user_id}"
+            print(f"Recognized user: {user_id}")
+        else:
+            title = "Unknown"
+            status = "unknown"
+            print("Unknown face detected.")
+
+        image_name = f"{status}_{time_stamp}_{i}.jpg"
+
+        im = Image.open(io.BytesIO(contents))
+        d = ImageDraw.Draw(im)
+        d.rectangle([left, top, right, bottom], outline="red", width=3)
+
+        img_bytes = io.BytesIO()
+        im.save(img_bytes, format='JPEG')
+        img_bytes.seek(0)
+
+        save_image_to_disk(image_name, img_bytes)
+        add_alert({
+            "title": title,
+            "time": time_str,
+            "date": date_str,
+            "image": image_name,
+            "isNew": True,
+            "recognised_user_id": user_id,
+            "embedding": res["encoding"]
+        }, session)
+
+    return {"status": "success"}
 
 if __name__ == "__main__":
     import uvicorn

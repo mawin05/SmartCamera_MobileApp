@@ -8,5 +8,5 @@ dependencies = [
     "dotenv>=0.9.9",
     "gpiozero>=2.0.1",
     "requests>=2.33.1",
-    "rpi-lgpio>=0.6",
+    "rpi-lgpio>=0.6; platform_machine == 'aarch64'",
 ]
