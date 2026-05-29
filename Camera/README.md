@@ -15,7 +15,7 @@ This module is responsible for the physical interface with the camera and motion
     Create a `.env` file in this directory to store your network configuration (URL to connect with the central Server):
     
     ```text
-    SERVER_URL=http://192.168.X.X:8001
+    SERVER_URL=http://192.168.X.X:8000
     ```
 
 3. **Installation**

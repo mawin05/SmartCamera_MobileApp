@@ -16,8 +16,24 @@ from contextlib import asynccontextmanager
 from PIL import Image, ImageDraw
 import json
 
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            await connection.send_json(message)
+
 load_dotenv()
 MODEL_URL = os.environ.get("MODEL_URL")
+manager = ConnectionManager()
 
 if not MODEL_URL:
     raise RuntimeError("MODEL_URL not found, check README for instructions")
@@ -81,7 +97,7 @@ def save_image_to_disk(filename: str, img_data):
             shutil.copyfileobj(img_data, f)
 
 # Creating an alert
-def add_alert(data: dict, session: Session):
+async def add_alert(data: dict, session: Session):
     title = data["title"]
     if data["recognised_user_id"]:
         user = session.get(User, data["recognised_user_id"])
@@ -100,6 +116,17 @@ def add_alert(data: dict, session: Session):
 
     session.add(new_alert)
     session.commit()
+    session.refresh(new_alert)
+
+    # Making an AlertRead object for the app
+    alert_dict = AlertRead.model_validate(new_alert).model_dump()
+
+    alert_data = {
+        "type": "new_alert",
+        "alert": alert_dict
+    }
+
+    await manager.broadcast(alert_data)
 
     return new_alert
 
@@ -122,6 +149,8 @@ async def rematch_alerts(client: httpx.AsyncClient, new_user: User, face_encodin
     try:
         response = await client.post(f"{MODEL_URL}/rematch", json=data, timeout=10)
         matched_ids = response.json().get("matched_ids", [])
+        updated_alerts = []
+
         for alert_id in matched_ids:
             alert_to_update = session.get(Alert, alert_id)
             if alert_to_update:
@@ -129,7 +158,20 @@ async def rematch_alerts(client: httpx.AsyncClient, new_user: User, face_encodin
                 alert_to_update.title = f"Detected: {new_user.name}"
                 alert_to_update.isNew = True
                 session.add(alert_to_update)
+
+                updated_alerts.append(alert_to_update)
+
         session.commit()
+
+        for alert in updated_alerts:
+            session.refresh(alert) # Upewniamy się, że mamy najświeższe dane z bazy
+            alert_dict = AlertRead.model_validate(alert).model_dump()
+            alert_data = {
+                "type": "updated_alert",
+                "alert": alert_dict
+            }
+            await manager.broadcast(alert_data)
+
     except Exception as e:
         print(f"Rematch failed: {e}")
 
@@ -281,6 +323,15 @@ async def get_user(user_id: int, session: Session = Depends(get_session)):
 async def get_alerts(session: Session = Depends(get_session)):
     return session.exec(select(Alert)).all()
 
+@app.websocket("/ws/alerts")
+async def websocket_alerts_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
 # Checking alert's status from New to Read
 @app.post("/alerts/{alert_id}/read")
 async def mark_as_read(alert_id: int, session: Session = Depends(get_session)):
@@ -291,6 +342,14 @@ async def mark_as_read(alert_id: int, session: Session = Depends(get_session)):
     alert.isNew = False
     session.add(alert)
     session.commit()
+    session.refresh(alert)
+
+    alert_dict = AlertRead.model_validate(alert).model_dump()
+    await manager.broadcast({
+        "type": "alert_read",
+        "alert": alert_dict
+    })
+
     return {"status": "success", "message": f"Alert {alert_id} przeczytany"}
 
 # Deleting an alert
@@ -304,6 +363,11 @@ async def delete_alert(alert_id: int, session: Session = Depends(get_session)):
 
     session.delete(alert_to_remove)
     session.commit()
+
+    await manager.broadcast({
+        "type": "alert_deleted",
+        "alert_id": alert_id
+    })
 
     return {"message": f"Alert {alert_id} was removed",
             "deleted_id": alert_id}
@@ -330,7 +394,7 @@ async def recognize_face(file: UploadFile, client: httpx.AsyncClient = Depends(g
         await file.seek(0)
         image_name = f"empty_{time_stamp}.jpg"
         save_image_to_disk(image_name, contents)
-        add_alert({
+        await add_alert({
             "title": "No face detected",
             "time": time_str,
             "date": date_str,
@@ -365,7 +429,7 @@ async def recognize_face(file: UploadFile, client: httpx.AsyncClient = Depends(g
         img_bytes.seek(0)
 
         save_image_to_disk(image_name, img_bytes)
-        add_alert({
+        await add_alert({
             "title": title,
             "time": time_str,
             "date": date_str,
