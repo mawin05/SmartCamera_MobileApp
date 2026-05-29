@@ -3,12 +3,13 @@ import io
 import shutil
 import time
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Request
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from typing import List
 from database import *
 from sqlalchemy.orm import selectinload
+from sqlalchemy import desc
 import httpx
 import asyncio
 from datetime import timedelta, datetime
@@ -16,6 +17,7 @@ from contextlib import asynccontextmanager
 from PIL import Image, ImageDraw
 import json
 
+# Manages active WebSocket connections to push real-time updates to the frontend
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
@@ -27,9 +29,17 @@ class ConnectionManager:
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
 
+    # Sends data to all active clients.
+    # Automatically cleans up zombie connections to prevent crashes
     async def broadcast(self, message: dict):
+        dead_connections = []
         for connection in self.active_connections:
-            await connection.send_json(message)
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                dead_connections.append(connection)
+        for dead in dead_connections:
+            self.disconnect(dead)
 
 load_dotenv()
 MODEL_URL = os.environ.get("MODEL_URL")
@@ -118,14 +128,13 @@ async def add_alert(data: dict, session: Session):
     session.commit()
     session.refresh(new_alert)
 
-    # Making an AlertRead object for the app
     alert_dict = AlertRead.model_validate(new_alert).model_dump()
-
     alert_data = {
         "type": "new_alert",
         "alert": alert_dict
     }
 
+    # Notify all connected clients about the newly created alert
     await manager.broadcast(alert_data)
 
     return new_alert
@@ -163,8 +172,9 @@ async def rematch_alerts(client: httpx.AsyncClient, new_user: User, face_encodin
 
         session.commit()
 
+        # Broadcast the updated alerts to clients
         for alert in updated_alerts:
-            session.refresh(alert) # Upewniamy się, że mamy najświeższe dane z bazy
+            session.refresh(alert)
             alert_dict = AlertRead.model_validate(alert).model_dump()
             alert_data = {
                 "type": "updated_alert",
@@ -202,7 +212,6 @@ def get_templates(session: Session):
     return [{"user_id": f.user_id, "embedding": f.embedding} for f in results]
 
 # Displaying users in the mobile app
-
 @app.get("/users", response_model=List[UserRead])
 async def get_users(session: Session = Depends(get_session)):
     """Zwraca listę wszystkich użytkowników."""
@@ -321,12 +330,13 @@ async def get_user(user_id: int, session: Session = Depends(get_session)):
 # Returns the list of all alerts
 @app.get("/alerts", response_model=List[AlertRead])
 async def get_alerts(session: Session = Depends(get_session)):
-    return session.exec(select(Alert)).all()
+    return session.exec(select(Alert).order_by(desc(Alert.id))).all()
 
 @app.websocket("/ws/alerts")
 async def websocket_alerts_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
+        # Keep the connection alive until the client drops
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
@@ -345,6 +355,7 @@ async def mark_as_read(alert_id: int, session: Session = Depends(get_session)):
     session.refresh(alert)
 
     alert_dict = AlertRead.model_validate(alert).model_dump()
+    # Instruct clients to update the alert's state
     await manager.broadcast({
         "type": "alert_read",
         "alert": alert_dict
@@ -364,6 +375,7 @@ async def delete_alert(alert_id: int, session: Session = Depends(get_session)):
     session.delete(alert_to_remove)
     session.commit()
 
+    # Instruct clients to instantly drop this alert from their active list
     await manager.broadcast({
         "type": "alert_deleted",
         "alert_id": alert_id
@@ -444,5 +456,3 @@ async def recognize_face(file: UploadFile, client: httpx.AsyncClient = Depends(g
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-# needed to change the way of starting the server due to face recognition not wanting to cooperate
-# to start the server type 'python main.py'

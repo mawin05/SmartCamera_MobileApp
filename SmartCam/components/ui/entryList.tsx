@@ -11,15 +11,17 @@ import React, { useCallback, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import AlertMin from "./alertMin";
 import SearchBar from "./searchBar";
+import { useAlertsWebSocket } from "@/hooks/use-alerts-websocket.ts";
 
 function EntryList() {
-    const [alerts, setAlerts] = useState<AlertItem[]>([]);
+    const [alerts, setAlerts] = useState<AlertItem[]>([s]);
+    useAlertsWebSocket(setAlerts);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
 
-    const filteredAlerts = alerts.filter((alert) =>
-        alert.title.toLowerCase().includes(searchQuery.toLowerCase()),
+    const filteredAlerts = (alerts || []).filter((alert) =>
+        alert?.title?.toLowerCase().includes(searchQuery.toLowerCase()),
     );
 
     const syncWithCache = async () => {
