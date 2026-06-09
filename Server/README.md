@@ -11,7 +11,7 @@ This is the central hub of the SmartCam system. It manages the SQLite database, 
 
 2. **Environment Configuration**
 
-    Create a .env file in this directory to store your network configuration (URL to connect with the device that runs the model):
+    Create a `.env` file in this directory to store your network configuration (URL to connect with the device that runs the AI Model):
     
     ```text
     MODEL_URL=http://192.168.X.X:8001

@@ -23,28 +23,20 @@ This module serves as the intelligence layer of the SmartCam system. It is respo
         sudo dnf install cmake gcc-c++ make
         ```
 
-3. **Environment Configuration**
-
-    Create a .env file in this directory to store your network configuration (URL to connect with the device that runs the server):
-    
-    ```text
-    SERVER_URL=http://192.168.X.X:8000
-    ```
-
-4. **Installation**
+3. **Installation**
 
     Using ```uv```, you can install all dependencies and set up the virtual environment with a single command:
     ```bash
     uv sync
     ```
-5. **Running the Model**
+4. **Running the Model**
 
     To start the AI Brain:
     ```bash
     uv run model.py
     ```
     
-6. **Adding new packages**
+5. **Adding new packages**
 
     If you want to add a new package to the project use the following command:
     ```bash

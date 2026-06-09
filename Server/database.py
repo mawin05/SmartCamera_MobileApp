@@ -1,4 +1,5 @@
-from sqlmodel import SQLModel, Field, select, Session, create_engine, Relationship
+from sqlmodel import SQLModel, Field, select, Session, create_engine, Relationship, delete
+from datetime import datetime
 from sqlalchemy import Column, JSON
 from typing import Optional, List
 
@@ -18,6 +19,7 @@ class AlertRead(SQLModel):
     image: str
     isNew: bool
     recognised_user_id: Optional[int]
+    embedding: Optional[List[float]]
 
 class FaceTemplateRead(SQLModel):
     id: int
@@ -39,6 +41,8 @@ class Alert(SQLModel, table=True):
     isNew: bool = Field(default=True)
     recognised_user_id: Optional[int] = Field(default=None, foreign_key="user.id")
     user: Optional["User"] = Relationship(back_populates="alerts")
+    embedding: Optional[List[float]] = Field(sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=lambda: datetime.now())
 
 class FaceTemplate(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

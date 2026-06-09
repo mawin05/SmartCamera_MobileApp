@@ -4,7 +4,7 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv()
-MODEL_URL = os.environ.get("MODEL_URL")
+SERVER_URL = os.environ.get("SERVER_URL")
 IMAGE_DIR = "test_images"
 
 def run_simulation():
@@ -20,7 +20,7 @@ def run_simulation():
             with open(img_path, "rb") as f:
                 # Creating and sending the UploadFile object as json
                 files = {"file": (img_name, f, "image/jpeg")}
-                response = requests.post(f"{MODEL_URL}/recognize", files=files)
+                response = requests.post(f"{SERVER_URL}/recognize", files=files)
 
                 if response.status_code == 200:
                     print(f"✅ Success with {img_name}")
