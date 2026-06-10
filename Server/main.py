@@ -447,6 +447,13 @@ async def recognize_face(file: UploadFile = File(...), session_id: str = Form(..
             if not await mark_recognised(session_id, user_id):
                 continue
 
+            cooldown_key = f"cooldown:user:{user_id}"
+            
+            cooldown_created = await redis.set(cooldown_key, "active", nx=True, ex=300)
+
+            if not cooldown_created:
+                continue
+
             title = f"Detected User ID: {user_id}"
             status = f"user_{user_id}"
             print(f"Recognized user: {user_id}")
