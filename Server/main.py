@@ -15,7 +15,9 @@ import asyncio
 from datetime import timedelta, datetime
 from contextlib import asynccontextmanager
 from PIL import Image, ImageDraw
+from redis.asyncio import Redis
 import json
+import hashlib
 
 # Manages active WebSocket connections to push real-time updates to the frontend
 class ConnectionManager:
@@ -48,6 +50,18 @@ manager = ConnectionManager()
 if not MODEL_URL:
     raise RuntimeError("MODEL_URL not found, check README for instructions")
 
+redis = Redis(host="localhost", port=6379)
+
+async def mark_recognised(session_id: str, user_id: int) -> bool:
+    key = f"session:{session_id}"
+
+    added = await redis.sadd(key, user_id)
+
+    if added:
+        await redis.expire(key, 3600)
+
+    return added == 1
+
 async def cleanup_alerts(interval_seconds: int, max_age_hours: int):
     while True:
         threshold = datetime.now() - timedelta(hours=max_age_hours)
@@ -73,8 +87,10 @@ async def lifespan(app: FastAPI):
     os.makedirs("data/images/captured", exist_ok=True)
     task = asyncio.create_task(cleanup_alerts(interval_seconds=60, max_age_hours=1))
 
-    # Creating AsyncClient for connection pooling
-    app.state.client = httpx.AsyncClient()
+    # --- POPRAWKA: Dodajemy timeout na odczyt (np. 30 sekund) ---
+    # Możesz też zaimportować httpx i użyć httpx.Timeout(30.0), 
+    # ale przekazanie samej liczby jako float też zadziała dla wszystkich limitów.
+    app.state.client = httpx.AsyncClient(timeout=30.0)
 
     # Starting the application
     yield
@@ -82,6 +98,7 @@ async def lifespan(app: FastAPI):
     # Shutdown of the application
     task.cancel()
     await app.state.client.aclose()
+    await redis.aclose()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -385,7 +402,7 @@ async def delete_alert(alert_id: int, session: Session = Depends(get_session)):
             "deleted_id": alert_id}
 
 @app.post("/recognize")
-async def recognize_face(file: UploadFile, client: httpx.AsyncClient = Depends(get_client), session: Session = Depends(get_session)):
+async def recognize_face(file: UploadFile = File(...), session_id: str = Form(...), client: httpx.AsyncClient = Depends(get_client), session: Session = Depends(get_session)):
     contents = await file.read()
     known_faces = get_templates(session)
 
@@ -403,27 +420,40 @@ async def recognize_face(file: UploadFile, client: httpx.AsyncClient = Depends(g
     time_stamp = now.strftime("%d.%m.%Y_%H-%M-%S")
 
     if not results:
-        await file.seek(0)
         image_name = f"empty_{time_stamp}.jpg"
         save_image_to_disk(image_name, contents)
         return {"status": "processed", "result": "no_faces"}
+    
+    base_image = Image.open(io.BytesIO(contents))
 
     for i, res in enumerate(results):
         user_id = res["user_id"]
+
         top, right, bottom, left = res["location"]
 
-        if user_id is not None:
+        if user_id is None:
+            key = f"session:{session_id}:unknown_alerted"
+
+            is_first_unknown = await redis.set(key, "true", nx=True, ex=3600)
+
+            if not is_first_unknown:
+                print(f"Skipping unknown face in session {session_id} - alert already sent.")
+                continue  # skipping next unknown
+
+            title = "Unknown"
+            status = "unknown"
+
+        else:
+            if not await mark_recognised(session_id, user_id):
+                continue
+
             title = f"Detected User ID: {user_id}"
             status = f"user_{user_id}"
             print(f"Recognized user: {user_id}")
-        else:
-            title = "Unknown"
-            status = "unknown"
-            print("Unknown face detected.")
 
         image_name = f"{status}_{time_stamp}_{i}.jpg"
 
-        im = Image.open(io.BytesIO(contents))
+        im = base_image.copy()
         d = ImageDraw.Draw(im)
         d.rectangle([left, top, right, bottom], outline="red", width=3)
 

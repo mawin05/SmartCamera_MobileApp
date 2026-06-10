@@ -1,4 +1,5 @@
 from gpiozero import MotionSensor
+import secrets
 from signal import pause
 import camera
 import time
@@ -14,9 +15,11 @@ def movement_detected():
     
     is_capturing = True
 
+    session_id = secrets.token_hex(16)
+
     for i in range(1, 6):
         current_filename = f"temp_{i}.jpg"
-        camera.execute(current_filename)
+        camera.execute(session_id, current_filename)
         time.sleep(2)
 
     is_capturing = False

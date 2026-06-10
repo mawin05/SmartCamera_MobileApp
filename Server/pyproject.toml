@@ -10,6 +10,7 @@ dependencies = [
     "httpx>=0.28.1",
     "pillow>=12.2.0",
     "python-multipart>=0.0.26",
+    "redis>=8.0.0",
     "sqlmodel>=0.0.38",
     "uvicorn>=0.44.0",
     "websockets>=16.0",
