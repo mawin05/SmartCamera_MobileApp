@@ -36,13 +36,14 @@ def take_photo(filename):
 
     return False
 
-def send_to_model(filename):
+def send_to_model(session_id, filename):
     try:
         with open(filename, "rb") as f:
             files = {"file": (filename, f, "image/jpeg")}
+            payload = {"session_id": session_id}
             print(f"📡 Wysyłanie do modelu: {SERVER_URL}/recognize...")
 
-            response = requests.post(f"{SERVER_URL}/recognize", files=files)
+            response = requests.post(f"{SERVER_URL}/recognize", files=files, data=payload)
 
             if response.status_code == 200:
                 print("🚀 Model odebrał zdjęcie i rozpoczął analizę.")
@@ -56,9 +57,9 @@ def send_to_model(filename):
             os.remove(filename)
     
 
-def execute(filename=TEMP_PHOTO):
+def execute(session_id, filename=TEMP_PHOTO):
     if take_photo(filename):
-        send_to_model(filename)
+        send_to_model(session_id, filename)
     return True
 
 if __name__ == "__main__":
