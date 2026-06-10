@@ -406,15 +406,6 @@ async def recognize_face(file: UploadFile, client: httpx.AsyncClient = Depends(g
         await file.seek(0)
         image_name = f"empty_{time_stamp}.jpg"
         save_image_to_disk(image_name, contents)
-        await add_alert({
-            "title": "No face detected",
-            "time": time_str,
-            "date": date_str,
-            "image": image_name,
-            "isNew": True,
-            "recognised_user_id": None,
-            "embedding": None
-        }, session)
         return {"status": "processed", "result": "no_faces"}
 
     for i, res in enumerate(results):
