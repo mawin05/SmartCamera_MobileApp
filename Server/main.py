@@ -6,10 +6,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from typing import List
-from database import *
+from typing import List, Sequence
+from database import AlertRead, UserRead, Alert, FaceTemplate, User, engine, get_session
+from sqlmodel import Session, select, delete, SQLModel, col
 from sqlalchemy.orm import selectinload
-from sqlalchemy import desc
 import httpx
 import asyncio
 from datetime import timedelta, datetime
@@ -17,7 +17,6 @@ from contextlib import asynccontextmanager
 from PIL import Image, ImageDraw
 from redis.asyncio import Redis
 import json
-import hashlib
 
 # Manages active WebSocket connections to push real-time updates to the frontend
 class ConnectionManager:
@@ -38,7 +37,7 @@ class ConnectionManager:
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except Exception as e:
+            except Exception as _:
                 dead_connections.append(connection)
         for dead in dead_connections:
             self.disconnect(dead)
@@ -74,7 +73,7 @@ async def cleanup_alerts(interval_seconds: int, max_age_hours: int):
                         os.remove(image_path)
                     except Exception as e:
                         print(f"Could not delete file {image_path}: {e}")
-            session.exec(delete(Alert).where(Alert.created_at < threshold))
+            session.exec(delete(Alert).where(col(Alert.created_at) < threshold))
             session.commit()
             print(f"Deleted {len(old_alerts)} alerts")
         await asyncio.sleep(interval_seconds)
@@ -88,7 +87,7 @@ async def lifespan(app: FastAPI):
     task = asyncio.create_task(cleanup_alerts(interval_seconds=60, max_age_hours=1))
 
     # --- POPRAWKA: Dodajemy timeout na odczyt (np. 30 sekund) ---
-    # Możesz też zaimportować httpx i użyć httpx.Timeout(30.0), 
+    # Możesz też zaimportować httpx i użyć httpx.Timeout(30.0),
     # ale przekazanie samej liczby jako float też zadziała dla wszystkich limitów.
     app.state.client = httpx.AsyncClient(timeout=30.0)
 
@@ -166,7 +165,7 @@ async def get_encoding_from_model(client: httpx.AsyncClient, file: UploadFile):
         print(f"Error while connecting to the model: {e}")
         return None
 
-async def rematch_alerts(client: httpx.AsyncClient, new_user: User, face_encoding: List[float], unrecognized_alerts: List[Alert], session: Session):
+async def rematch_alerts(client: httpx.AsyncClient, new_user: User, face_encoding: List[float], unrecognized_alerts: Sequence[Alert], session: Session):
     data = {
         "user_id": new_user.id,
         "embedding": face_encoding,
@@ -232,7 +231,7 @@ def get_templates(session: Session):
 @app.get("/users", response_model=List[UserRead])
 async def get_users(session: Session = Depends(get_session)):
     """Zwraca listę wszystkich użytkowników."""
-    statement = select(User).options(selectinload(User.images), selectinload(User.alerts))
+    statement = select(User).options(selectinload(User.images), selectinload(User.alerts)) # type: ignore
     results = session.exec(statement).all()
     return results
 
@@ -263,15 +262,17 @@ async def create_user(
     session.commit()
     session.refresh(new_user)
 
+    assert new_user.id is not None, "User id cannot be None"
+
     await add_user_image_logic(new_user.id, file, face_encodings[0], session)
-    statement = select(Alert).where(Alert.recognised_user_id == None, Alert.embedding != None)
+    statement = select(Alert).where(Alert.recognised_user_id is None, Alert.embedding is not None)
     unrecognized_alerts = session.exec(statement).all()
 
     if unrecognized_alerts:
         await rematch_alerts(client, new_user, face_encodings[0], unrecognized_alerts, session)
 
     statement = select(User).where(User.id == new_user.id).options(
-        selectinload(User.images), selectinload(User.alerts)
+        selectinload(User.images), selectinload(User.alerts) # type: ignore
     )
     full_user = session.exec(statement).first()
 
@@ -280,7 +281,7 @@ async def create_user(
 # Deleting a user
 @app.delete("/users/{user_id}")
 async def delete_user(user_id: int, session: Session = Depends(get_session)):
-    statement = select(User).where(User.id == user_id).options(selectinload(User.images))
+    statement = select(User).where(User.id == user_id).options(selectinload(User.images)) # type: ignore
     user_to_remove = session.exec(statement).first()
 
     if not user_to_remove:
@@ -312,6 +313,12 @@ async def add_user_image(
 ):
     face_encodings = await get_encoding_from_model(client, file)
 
+    if face_encodings is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Model server is not responding or returned an error."
+        )
+
     if len(face_encodings) == 0:
         raise HTTPException(status_code=404, detail="No face detected")
 
@@ -326,8 +333,8 @@ async def add_user_image(
     await add_user_image_logic(user_id, file, face_encodings[0], session)
 
     statement = select(User).where(User.id == user_id).options(
-            selectinload(User.images),
-            selectinload(User.alerts)
+            selectinload(User.images), # type: ignore
+            selectinload(User.alerts) # type: ignore
     )
     updated_user = session.exec(statement).first()
 
@@ -336,7 +343,7 @@ async def add_user_image(
 # Get information about a certain user
 @app.get("/users/{user_id}", response_model=UserRead)
 async def get_user(user_id: int, session: Session = Depends(get_session)):
-    statement = select(User).where(User.id == user_id).options(selectinload(User.images))
+    statement = select(User).where(User.id == user_id).options(selectinload(User.images)) # type: ignore
     user = session.exec(statement).first()
 
     if not user:
@@ -347,7 +354,7 @@ async def get_user(user_id: int, session: Session = Depends(get_session)):
 # Returns the list of all alerts
 @app.get("/alerts", response_model=List[AlertRead])
 async def get_alerts(session: Session = Depends(get_session)):
-    return session.exec(select(Alert).order_by(desc(Alert.id))).all()
+    return session.exec(select(Alert).order_by(col(Alert.id).desc())).all()
 
 @app.websocket("/ws/alerts")
 async def websocket_alerts_endpoint(websocket: WebSocket):
@@ -423,7 +430,7 @@ async def recognize_face(file: UploadFile = File(...), session_id: str = Form(..
         image_name = f"empty_{time_stamp}.jpg"
         save_image_to_disk(image_name, contents)
         return {"status": "processed", "result": "no_faces"}
-    
+
     base_image = Image.open(io.BytesIO(contents))
 
     for i, res in enumerate(results):
@@ -448,7 +455,7 @@ async def recognize_face(file: UploadFile = File(...), session_id: str = Form(..
                 continue
 
             cooldown_key = f"cooldown:user:{user_id}"
-            
+
             cooldown_created = await redis.set(cooldown_key, "active", nx=True, ex=300)
 
             if not cooldown_created:

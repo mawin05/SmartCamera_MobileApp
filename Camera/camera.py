@@ -2,7 +2,6 @@ import subprocess
 import os
 import requests
 from dotenv import load_dotenv
-import requests
 
 TEMP_PHOTO = "temp_capture.jpg"
 load_dotenv()
@@ -15,7 +14,7 @@ def take_photo(filename):
     if os.path.exists(filename):
         os.remove(filename)
 
-    print("📸 Przechwytywanie obrazu przez rpicam-still do {filename}...")
+    print(f"📸 Przechwytywanie obrazu przez rpicam-still do {filename}...")
     try:
         # -n: brak podglądu, -o: wyjście, -t 1: czekaj 1ms (szybkie zdjęcie)
         # --immediate: nie czekaj na stabilizację (jeśli zależy Ci na czasie)
@@ -55,7 +54,7 @@ def send_to_model(session_id, filename):
     finally:
         if os.path.exists(filename):
             os.remove(filename)
-    
+
 
 def execute(session_id, filename=TEMP_PHOTO):
     if take_photo(filename):
@@ -63,5 +62,5 @@ def execute(session_id, filename=TEMP_PHOTO):
     return True
 
 if __name__ == "__main__":
-    if take_photo():
-        send_to_model()
+    test_session_id = "manual_test_session"
+    execute(test_session_id)

@@ -1,4 +1,4 @@
-from sqlmodel import SQLModel, Field, select, Session, create_engine, Relationship, delete
+from sqlmodel import SQLModel, Field, Session, create_engine, Relationship
 from datetime import datetime
 from sqlalchemy import Column, JSON
 from typing import Optional, List

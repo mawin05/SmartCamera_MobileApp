@@ -42,7 +42,6 @@ async def identify(file: UploadFile = File(...), known_faces_json: str = Form(..
 # Checking faces of old alerts after adding a new user
 @app.post("/rematch")
 async def rematch_unknown_faces(data: dict):
-    user_id = data["user_id"]
     embedding = np.array(data["embedding"])
     alerts = data["unrecognized_alerts"]
 
