@@ -31,6 +31,8 @@ class UserRead(SQLModel):
     name: str
     images: List[FaceTemplateRead] = []
     alerts: List[AlertRead] = []
+    is_trusted: bool
+    is_temporary: bool
 
 class Alert(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -56,3 +58,5 @@ class User(SQLModel, table=True):
     name: str
     images: List["FaceTemplate"] = Relationship(back_populates="user")
     alerts: List["Alert"] = Relationship(back_populates="user")
+    is_trusted: bool = Field(default=False)
+    is_temporary: bool = Field(default=True)

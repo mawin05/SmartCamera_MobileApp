@@ -124,14 +124,10 @@ def save_image_to_disk(filename: str, img_data):
 
 # Creating an alert
 async def add_alert(data: dict, session: Session):
-    title = data["title"]
-    if data["recognised_user_id"]:
-        user = session.get(User, data["recognised_user_id"])
-        if user:
-            title = f"Detected: {user.name}"
+    print(f"[ALERT] Creating database alert: '{data['title']}' for user ID: {data['recognised_user_id']}")
 
     new_alert = Alert(
-        title=title,
+        title=data["title"],
         time=data["time"],
         date=data["date"],
         image=data["image"],
@@ -149,7 +145,7 @@ async def add_alert(data: dict, session: Session):
         "type": "new_alert",
         "alert": alert_dict
     }
-
+    print(f"[WS] Broadcasting alert (ID: {new_alert.id}) to {len(manager.active_connections)} connected WebSocket clients.")
     # Notify all connected clients about the newly created alert
     await manager.broadcast(alert_data)
 
@@ -166,6 +162,8 @@ async def get_encoding_from_model(client: httpx.AsyncClient, file: UploadFile):
         return None
 
 async def rematch_alerts(client: httpx.AsyncClient, new_user: User, face_encoding: List[float], unrecognized_alerts: Sequence[Alert], session: Session):
+    print(f"[REMATCH] Checking retrospective matches for new user '{new_user.name}' among {len(unrecognized_alerts)} unrecognized alerts...")
+
     data = {
         "user_id": new_user.id,
         "embedding": face_encoding,
@@ -174,6 +172,10 @@ async def rematch_alerts(client: httpx.AsyncClient, new_user: User, face_encodin
     try:
         response = await client.post(f"{MODEL_URL}/rematch", json=data, timeout=10)
         matched_ids = response.json().get("matched_ids", [])
+        if matched_ids:
+            print(f"[REMATCH] Success: Model matched old alerts with IDs: {matched_ids} to user '{new_user.name}'. Updating database.")
+        else:
+            print(f"[REMATCH] No old alerts matched for user '{new_user.name}'.")
         updated_alerts = []
 
         for alert_id in matched_ids:
@@ -201,7 +203,7 @@ async def rematch_alerts(client: httpx.AsyncClient, new_user: User, face_encodin
     except Exception as e:
         print(f"Rematch failed: {e}")
 
-async def add_user_image_logic(user_id: int, file: UploadFile, face_encoding: list[float], session: Session):
+async def add_user_image_logic(user_id: int, file: UploadFile | io.BytesIO, face_encoding: list[float], session: Session):
     new_template = FaceTemplate(filepath="pending", user_id=user_id, embedding=face_encoding)
     session.add(new_template)
     session.commit()
@@ -213,7 +215,14 @@ async def add_user_image_logic(user_id: int, file: UploadFile, face_encoding: li
 
     os.makedirs(user_dir, exist_ok=True)
     with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        # path for io.BytesIO objects
+        if isinstance(file, io.BytesIO):
+            file.seek(0)
+            buffer.write(file.read())
+        # path for UploadFile objects
+        else:
+            file.file.seek(0)
+            shutil.copyfileobj(file.file, buffer)
 
     new_template.filepath = filename
     session.add(new_template)
@@ -257,7 +266,7 @@ async def create_user(
     if len(face_encodings) > 1:
         raise HTTPException(status_code=404, detail="MULTIPLE_FACES")
 
-    new_user = User(name=name)
+    new_user = User(name=name, is_temporary=False)
     session.add(new_user)
     session.commit()
     session.refresh(new_user)
@@ -410,6 +419,8 @@ async def delete_alert(alert_id: int, session: Session = Depends(get_session)):
 
 @app.post("/recognize")
 async def recognize_face(file: UploadFile = File(...), session_id: str = Form(...), client: httpx.AsyncClient = Depends(get_client), session: Session = Depends(get_session)):
+    print(f"\n[RECOGNIZE] --- New request for session: {session_id} ---")
+
     contents = await file.read()
     known_faces = get_templates(session)
 
@@ -420,6 +431,7 @@ async def recognize_face(file: UploadFile = File(...), session_id: str = Form(..
     )
 
     results = response.json().get("results", [])
+    print(f"[RECOGNIZE] Model returned {len(results)} recognized faces.")
 
     now = datetime.now()
     time_str = now.strftime("%H:%M:%S")
@@ -427,6 +439,7 @@ async def recognize_face(file: UploadFile = File(...), session_id: str = Form(..
     time_stamp = now.strftime("%d.%m.%Y_%H-%M-%S")
 
     if not results:
+        print("[RECOGNIZE] Decision: No faces detected. Saving empty image and exiting.")
         image_name = f"empty_{time_stamp}.jpg"
         save_image_to_disk(image_name, contents)
         return {"status": "processed", "result": "no_faces"}
@@ -435,36 +448,58 @@ async def recognize_face(file: UploadFile = File(...), session_id: str = Form(..
 
     for i, res in enumerate(results):
         user_id = res["user_id"]
+        print(f"[RECOGNIZE] Processing face {i+1}/{len(results)}. Returned ID: {user_id}")
 
         top, right, bottom, left = res["location"]
 
+        # When an uknown face is detected a new user is created
+        # This user is untrusted and temporary
+        # This means that when all their alerts are deleted the user is also deleted
         if user_id is None:
-            key = f"session:{session_id}:unknown_alerted"
+            print("[RECOGNIZE] Decision: Face is unknown. Creating a temporary user.")
+            new_user = User(name="Stranger")
+            session.add(new_user)
+            session.commit()
+            session.refresh(new_user)
+            new_user.name += f"_{new_user.id}"
+            session.commit()
+            assert new_user.id is not None, "Fresh user_id cannot be None"
+            user_id = new_user.id
+            print(f"[RECOGNIZE] Success: Created new user with ID: {user_id}")
+            # Scale properly the image for it to show only the wanted face
+            im = base_image.copy()
+            cropped_im = im.crop((left, top, right, bottom))
+            img_bytes = io.BytesIO()
+            cropped_im.save(img_bytes, format='JPEG')
+            img_bytes.seek(0)
+            await add_user_image_logic(user_id, img_bytes, res["encoding"], session)
 
-            is_first_unknown = await redis.set(key, "true", nx=True, ex=3600)
+        print(f"[RECOGNIZE] Checking for session duplication [{session_id}] for ID: {user_id}...")
+        if not await mark_recognised(session_id, user_id):
+            print(f"[RECOGNIZE] Rejected: User {user_id} already recognized in this session. Skipping.")
+            continue
 
-            if not is_first_unknown:
-                print(f"Skipping unknown face in session {session_id} - alert already sent.")
-                continue  # skipping next unknown
+        print(f"[RECOGNIZE] Checking global Redis cooldown for ID: {user_id}...")
+        cooldown_key = f"cooldown:user:{user_id}"
+        cooldown_created = await redis.set(cooldown_key, "active", nx=True, ex=300)
 
-            title = "Unknown"
-            status = "unknown"
+        if not cooldown_created:
+            print(f"[RECOGNIZE] Rejected: Active cooldown (5 min) for user {user_id}. Skipping.")
+            continue
 
+        user = session.get(User, user_id)
+
+        if not user:
+            print(f"[RECOGNIZE] Error: User {user_id} does not exist in the database! Skipping.")
+            continue
+        print(f"[RECOGNIZE] Decision: User {user.name} qualified for an alert. Trusted status: {user.is_trusted}")
+
+        if not user.is_temporary:
+            title = f"Recognized: {user.name}"
         else:
-            if not await mark_recognised(session_id, user_id):
-                continue
+            title = f"Unknown: {user.name}"
 
-            cooldown_key = f"cooldown:user:{user_id}"
-
-            cooldown_created = await redis.set(cooldown_key, "active", nx=True, ex=300)
-
-            if not cooldown_created:
-                continue
-
-            title = f"Detected User ID: {user_id}"
-            status = f"user_{user_id}"
-            print(f"Recognized user: {user_id}")
-
+        status = f"user_{user_id}"
         image_name = f"{status}_{time_stamp}_{i}.jpg"
 
         im = base_image.copy()
