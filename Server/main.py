@@ -466,13 +466,6 @@ async def recognize_face(file: UploadFile = File(...), session_id: str = Form(..
             assert new_user.id is not None, "Fresh user_id cannot be None"
             user_id = new_user.id
             print(f"[RECOGNIZE] Success: Created new user with ID: {user_id}")
-            # Scale properly the image for it to show only the wanted face
-            im = base_image.copy()
-            cropped_im = im.crop((left, top, right, bottom))
-            img_bytes = io.BytesIO()
-            cropped_im.save(img_bytes, format='JPEG')
-            img_bytes.seek(0)
-            await add_user_image_logic(user_id, img_bytes, res["encoding"], session)
 
         print(f"[RECOGNIZE] Checking for session duplication [{session_id}] for ID: {user_id}...")
         if not await mark_recognised(session_id, user_id):
@@ -498,6 +491,14 @@ async def recognize_face(file: UploadFile = File(...), session_id: str = Form(..
             title = f"Recognized: {user.name}"
         else:
             title = f"Unknown: {user.name}"
+            # Scale properly the image for it to show only the wanted face
+            im = base_image.copy()
+            cropped_im = im.crop((left, top, right, bottom))
+            img_bytes = io.BytesIO()
+            cropped_im.save(img_bytes, format='JPEG')
+            img_bytes.seek(0)
+            # For temporary users add many faces for reference
+            await add_user_image_logic(user_id, img_bytes, res["encoding"], session)
 
         status = f"user_{user_id}"
         image_name = f"{status}_{time_stamp}_{i}.jpg"

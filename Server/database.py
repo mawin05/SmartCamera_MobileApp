@@ -4,7 +4,7 @@ from sqlalchemy import Column, JSON
 from typing import Optional, List
 
 DATABASE_URL = "sqlite:///data/database.db"
-engine = create_engine(DATABASE_URL, echo=True, connect_args={"check_same_thread": False})
+engine = create_engine(DATABASE_URL, echo=False, connect_args={"check_same_thread": False})
 
 def get_session():
     with Session(engine) as session:
