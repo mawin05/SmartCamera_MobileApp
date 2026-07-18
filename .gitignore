@@ -24,3 +24,5 @@ desktop.ini
 
 .env
 .env.local
+
+pyrightconfig.json
