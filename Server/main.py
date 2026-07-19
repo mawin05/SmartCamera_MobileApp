@@ -94,6 +94,17 @@ async def cleanup_alerts(interval_seconds: int, max_age_hours: int):
             session.exec(delete(Alert).where(col(Alert.created_at) < threshold))
             session.commit()
             print(f"Deleted {len(old_alerts)} alerts")
+
+            # Automatic removal of temporary users with no alerts left
+            statement = (
+                select(User).where(User.is_temporary).options(selectinload(User.alerts))  # type: ignore
+            )
+            users = session.exec(statement).all()
+
+            for user in users:
+                if user.id is not None and not user.alerts:
+                    await delete_user(user.id, session)
+
         await asyncio.sleep(interval_seconds)
 
 
@@ -437,9 +448,18 @@ async def delete_alert(
     if os.path.exists(file_path):
         os.remove(file_path)
 
+    user_id = alert_to_remove.recognised_user_id
+
     session.delete(alert_to_remove)
+
+    # If auto_commit is False, this was triggered by the delete_user function which already deletes the user
+    # If True, it's a direct call from the mobile app, so we need to clean up temporary users if they have no alerts left
     if auto_commit:
         session.commit()
+        if user_id is not None:
+            user = session.get(User, user_id, options=[selectinload(User.alerts)])  # type: ignore
+            if user and user.is_temporary and not user.alerts:
+                await delete_user(user_id, session)
 
     # Instruct clients to instantly drop this alert from their active list
     await manager.broadcast({"type": "alert_deleted", "alert_id": alert_id})
