@@ -6,7 +6,7 @@ import shutil
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import List, Sequence
+from typing import List
 
 import httpx
 from dotenv import load_dotenv
@@ -187,58 +187,6 @@ async def get_encoding_from_model(client: httpx.AsyncClient, file: UploadFile):
         return None
 
 
-async def rematch_alerts(
-    client: httpx.AsyncClient,
-    new_user: User,
-    face_encoding: List[float],
-    unrecognized_alerts: Sequence[Alert],
-    session: Session,
-):
-    print(
-        f"[REMATCH] Checking retrospective matches for new user '{new_user.name}' among {len(unrecognized_alerts)} unrecognized alerts..."
-    )
-
-    data = {
-        "user_id": new_user.id,
-        "embedding": face_encoding,
-        "unrecognized_alerts": [
-            {"id": a.id, "embedding": a.embedding} for a in unrecognized_alerts
-        ],
-    }
-    try:
-        response = await client.post(f"{MODEL_URL}/rematch", json=data, timeout=10)
-        matched_ids = response.json().get("matched_ids", [])
-        if matched_ids:
-            print(
-                f"[REMATCH] Success: Model matched old alerts with IDs: {matched_ids} to user '{new_user.name}'. Updating database."
-            )
-        else:
-            print(f"[REMATCH] No old alerts matched for user '{new_user.name}'.")
-        updated_alerts = []
-
-        for alert_id in matched_ids:
-            alert_to_update = session.get(Alert, alert_id)
-            if alert_to_update:
-                alert_to_update.recognised_user_id = new_user.id
-                alert_to_update.title = f"Detected: {new_user.name}"
-                alert_to_update.isNew = True
-                session.add(alert_to_update)
-
-                updated_alerts.append(alert_to_update)
-
-        session.commit()
-
-        # Broadcast the updated alerts to clients
-        for alert in updated_alerts:
-            session.refresh(alert)
-            alert_dict = AlertRead.model_validate(alert).model_dump()
-            alert_data = {"type": "updated_alert", "alert": alert_dict}
-            await manager.broadcast(alert_data)
-
-    except Exception as e:
-        print(f"Rematch failed: {e}")
-
-
 async def add_user_image_logic(
     user_id: int,
     file: UploadFile | io.BytesIO,
@@ -323,15 +271,6 @@ async def create_user(
     assert new_user.id is not None, "User id cannot be None"
 
     await add_user_image_logic(new_user.id, file, face_encodings[0], session)
-    statement = select(Alert).where(
-        Alert.recognised_user_id is None, Alert.embedding is not None
-    )
-    unrecognized_alerts = session.exec(statement).all()
-
-    if unrecognized_alerts:
-        await rematch_alerts(
-            client, new_user, face_encodings[0], unrecognized_alerts, session
-        )
 
     statement = (
         select(User)
@@ -506,6 +445,48 @@ async def delete_alert(
     await manager.broadcast({"type": "alert_deleted", "alert_id": alert_id})
 
     return {"message": f"Alert {alert_id} was removed", "deleted_id": alert_id}
+
+
+# Upgrading a temporary user to a permanent one and updating their old alerts
+@app.patch("/users/{user_id}")
+async def save_temporary_user(
+    user_id: int, name: str, session: Session = Depends(get_session)
+):
+    user = session.get(User, user_id, options=[selectinload(User.alerts)])  # type: ignore
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.is_temporary:
+        return {"message": "User was already saved"}
+
+    user.is_temporary = False
+    user.name = name
+    new_title = f"Recognized: {user.name}"
+
+    # Updating the titles of all previous alerts connected to this user
+    for alert in user.alerts:
+        alert.title = new_title
+        alert_dict = AlertRead.model_validate(alert).model_dump()
+        alert_data = {"type": "updated_alert", "alert": alert_dict}
+        await manager.broadcast(alert_data)
+
+    session.commit()
+
+    return {"message": f"User {user.name} saved"}
+
+
+# Changing user's trust status
+@app.patch("/users/{user_id}/trust")
+async def update_trust_status(
+    user_id: int, is_trusted: bool, session: Session = Depends(get_session)
+):
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.is_trusted = is_trusted
+    session.commit()
+    return {"message": "Status updated", "is_trusted": user.is_trusted}
 
 
 @app.post("/recognize")

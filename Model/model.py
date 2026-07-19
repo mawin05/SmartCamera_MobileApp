@@ -44,24 +44,6 @@ async def identify(file: UploadFile = File(...), known_faces_json: str = Form(..
     return {"results": results}
 
 
-# Checking faces of old alerts after adding a new user
-@app.post("/rematch")
-async def rematch_unknown_faces(data: dict):
-    embedding = np.array(data["embedding"])
-    alerts = data["unrecognized_alerts"]
-
-    if not alerts:
-        return {"status": "No alerts to process"}
-
-    alerts_encodings = [np.array(alert["embedding"]) for alert in alerts]
-
-    distances = face_recognition.face_distance(alerts_encodings, embedding)
-    indices = np.where(distances < TOLERANCE)[0]
-    matched_ids = [alerts[index]["id"] for index in indices]
-
-    return {"matched_ids": matched_ids}
-
-
 # Endpoint for Server to get an image's encoding
 @app.post("/encode")
 async def encode_image(file: UploadFile):
