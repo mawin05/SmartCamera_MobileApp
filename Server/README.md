@@ -1,5 +1,5 @@
 # Backend Server
-This is the central hub of the SmartCam system. It manages the SQLite database, handles user registrations, stores alert history, and serves captured images to the mobile application.
+This is the central hub of the SmartCam system. It manages the SQLite database, handles user registrations, stores alert history, broadcasts real-time updates via WebSockets, and runs background cleanup tasks.
 
 ---
 
@@ -8,8 +8,25 @@ This is the central hub of the SmartCam system. It manages the SQLite database, 
 1. **Prerequisites**
     - Python 3.13+
     - uv (Modern Python package manager - [Install uv](https://github.com/astral-sh/uv))
+    - Redis Server
 
-2. **Environment Configuration**
+2. **Redis**
+
+    The server requires Redis to manage alert cooldowns and prevent notification spam. You can install it natively on your OS or run it via Docker.
+
+    - **Ubuntu / Raspberry Pi OS**:
+        ```bash
+        sudo apt install redis-server
+        sudo systemctl enable --now redis-server
+        ```
+    
+    - **Fedora**:
+        ```bash
+        sudo dnf install redis
+        sudo systemctl enable --now redis
+        ```
+
+3. **Environment Configuration**
 
     Create a `.env` file in this directory to store your network configuration (URL to connect with the device that runs the AI Model):
     
