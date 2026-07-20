@@ -84,26 +84,35 @@ async def cleanup_alerts(interval_seconds: int, max_age_hours: int):
             old_alerts = session.exec(
                 select(Alert).where(Alert.created_at < threshold)
             ).all()
-            for old_alert in old_alerts:
-                image_path = f"data/images/captured/{old_alert.image}"
-                if os.path.isfile(image_path):
-                    try:
-                        os.remove(image_path)
-                    except Exception as e:
-                        print(f"Could not delete file {image_path}: {e}")
-            session.exec(delete(Alert).where(col(Alert.created_at) < threshold))
-            session.commit()
-            print(f"Deleted {len(old_alerts)} alerts")
 
-            # Automatic removal of temporary users with no alerts left
-            statement = (
-                select(User).where(User.is_temporary).options(selectinload(User.alerts))  # type: ignore
-            )
-            users = session.exec(statement).all()
+            if old_alerts:
+                deleted_alerts = []
+                for old_alert in old_alerts:
+                    image_path = f"data/images/captured/{old_alert.image}"
+                    if os.path.isfile(image_path):
+                        try:
+                            os.remove(image_path)
+                        except Exception as e:
+                            print(f"Could not delete file {image_path}: {e}")
+                    deleted_alerts.append(old_alert.id)
 
-            for user in users:
-                if user.id is not None and not user.alerts:
-                    await delete_user(user.id, session)
+                session.exec(delete(Alert).where(col(Alert.created_at) < threshold))
+                session.commit()
+                print(f"Deleted {len(old_alerts)} alerts")
+
+                # Broadcasting about deleting of old alerts
+                for alert_id in deleted_alerts:
+                    await manager.broadcast({"type": "alert_deleted", "alert_id": alert_id})
+
+                # Automatic removal of temporary users with no alerts left
+                statement = (
+                    select(User).where(User.is_temporary).options(selectinload(User.alerts))  # type: ignore
+                )
+                users = session.exec(statement).all()
+
+                for user in users:
+                    if user.id is not None and not user.alerts:
+                        await delete_user(user.id, session)
 
         await asyncio.sleep(interval_seconds)
 
