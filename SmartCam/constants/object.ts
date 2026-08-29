@@ -49,15 +49,21 @@ export const USERS: User[] = [
     id: "1",
     name: "Maciej",
     image: require("../assets/images/maciej.jpg"),
+    images: [],
+    alerts: [],
   },
   {
     id: "2",
     name: "Lewy",
     image: require("../assets/images/lewy.jpg"),
+    images: [],
+    alerts: [],
   },
   {
     id: "3",
     name: "Kacper",
     image: require("../assets/images/kacper.jpg"),
+    images: [],
+    alerts: [],
   },
 ];

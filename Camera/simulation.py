@@ -1,16 +1,17 @@
 import os
-import time
-import requests
 import secrets
+import time
+
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 SERVER_URL = os.environ.get("SERVER_URL")
 IMAGE_DIR = "test_images"
 
-def run_simulation():
 
-    images = [f for f in os.listdir(IMAGE_DIR) if f.endswith(('.jpg', '.jpeg', '.png'))]
+def run_simulation():
+    images = [f for f in os.listdir(IMAGE_DIR) if f.endswith((".jpg", ".jpeg", ".png"))]
 
     session_id = secrets.token_hex(16)
     payload = {"session_id": session_id}
@@ -24,20 +25,23 @@ def run_simulation():
             with open(img_path, "rb") as f:
                 # Creating and sending the UploadFile object as json
                 files = {"file": (img_name, f, "image/jpeg")}
-                
-                response = requests.post(f"{SERVER_URL}/recognize", files=files, data=payload)
+
+                response = requests.post(
+                    f"{SERVER_URL}/recognize", files=files, data=payload, timeout=60
+                )
 
                 if response.status_code == 200:
                     print(f"✅ Success with {img_name}")
                 else:
                     print(f"⚠️ Error: {response.status_code} - {response.text}")
 
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"Error: {e}")
 
         time.sleep(1)
 
     print("ALL PHOTOS HAVE BEEN TAKEN")
+
 
 if __name__ == "__main__":
     run_simulation()

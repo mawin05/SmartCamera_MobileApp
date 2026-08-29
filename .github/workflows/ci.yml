@@ -1,0 +1,81 @@
+name: CI Checks
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # ----------------------------------------------------
+  # 1. Python Modules (Camera, Model, Server)
+  # ----------------------------------------------------
+  python-checks:
+    name: Python Checks
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        folder: [Camera, Model, Server]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Check Formatting (Ruff)
+        run: uv run --with ruff ruff format --check ${{ matrix.folder }}/
+
+      - name: Run Linter (Ruff)
+        run: uv run --with ruff ruff check ${{ matrix.folder }}/
+
+      - name: Static Security Analysis (Bandit)
+        run: uv run --with bandit bandit -r ${{ matrix.folder }}/ -lll -s B101,B104,B404,B603,B607 -x "*/.venv/*,*/node_modules/*,*/__pycache__/*"
+
+      - name: Dependency Vulnerability Audit
+        working-directory: ${{ matrix.folder }}
+        run: |
+          uv pip compile pyproject.toml -o requirements.lock
+          uv run --with pip-audit pip-audit -r requirements.lock
+
+  # ----------------------------------------------------
+  # 2. React Native Module (SmartCam)
+  # ----------------------------------------------------
+  smartcam-checks:
+    name: React Native Checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: SmartCam
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: SmartCam/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Linter (Errors only)
+        run: npx eslint . --quiet --ignore-pattern ".expo/**"
+
+      - name: Typecheck TypeScript
+        run: npx tsc --noEmit
+
+      - name: Critical Security Audit
+        run: npm audit --audit-level=critical --omit=dev || true

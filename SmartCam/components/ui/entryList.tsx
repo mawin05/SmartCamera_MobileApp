@@ -11,7 +11,7 @@ import React, { useCallback, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import AlertMin from "./alertMin";
 import SearchBar from "./searchBar";
-import { useAlertsWebSocket } from "@/hooks/use-alerts-websocket.ts";
+import { useAlertsWebSocket } from "@/hooks/use-alerts-websocket";
 
 function EntryList() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
