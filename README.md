@@ -18,6 +18,45 @@ Mobile application designed for an intelligent monitoring system
 
 ---
 
+## Developer Setup & Quality Standards
+
+This project uses modern tooling for code quality and automated CI checks:
+
+- **Python modules (`Camera`, `Model`, `Server`)**: Managed with [`uv`](https://docs.astral.sh/uv/), formatted and linted with **Ruff**, and checked with **Bandit** and `pip-audit`.
+- **Mobile app (`SmartCam`)**: Checked with **ESLint** and **TypeScript (`tsc`)**.
+
+### 1. Prerequisites
+- [uv](https://docs.astral.sh/uv/) (Python package & environment manager)
+- [Node.js](https://nodejs.org/) (v20+ or v24+) & npm
+
+### 2. Initial Setup (One-Time)
+Run these commands from the **root directory** of the repository:
+
+```bash
+# 1. Sync the root Python environment
+uv sync
+
+# 2. Install pre-commit Git hooks
+uv run pre-commit install
+```
+
+### 3. Workflow & Pre-commit Hooks
+Once installed, `pre-commit` automatically runs before every git commit to format and check your Python code:
+- If files need formatting, `ruff` reformats them automatically and marks the hook as failed. Stage the changes (`git add .`) and commit again.
+- If errors remain, inspect the line numbers printed in the terminal.
+
+You can also run all checks manually on the entire monorepo at any time:
+```bash
+uv run pre-commit run --all-files
+```
+
+### 4. CI Pipeline
+Every push and Pull Request triggers GitHub Actions to ensure code integrity:
+- Python Matrix Checks: Ruff formatting (`--check`), Ruff linting, Bandit security analysis, and `pip-audit` for dependency vulnerabilities.
+- SmartCam Checks: `tsc --noEmit` (type checking) and `eslint`.
+
+---
+
 ## Getting Started
 Each component contains its own **README.md** with specific installation instructions. To start the entire system, follow these steps in order:
 1. Start **Redis** server
