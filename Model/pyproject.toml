@@ -10,7 +10,7 @@ dependencies = [
     "fastapi>=0.136.0",
     "numpy>=2.4.4",
     "python-multipart>=0.0.26",
-    "setuptools>=83.0.0",
+    "setuptools<70",
     "uvicorn>=0.44.0",
 ]
 
