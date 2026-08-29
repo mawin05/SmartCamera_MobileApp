@@ -1,13 +1,15 @@
-from fastapi import FastAPI, UploadFile, File, Form
 import io
+import json
+
+import face_recognition
 import numpy as np
 import uvicorn
-import face_recognition
-import json
+from fastapi import FastAPI, File, Form, UploadFile
 
 TOLERANCE = 0.50
 
 app = FastAPI()
+
 
 # Core function for recognizing faces
 # Takes all known encodes and an image
@@ -31,31 +33,16 @@ async def identify(file: UploadFile = File(...), known_faces_json: str = Form(..
             best_match_index = np.argmin(distances)
             if distances[best_match_index] < TOLERANCE:
                 user_id = known_faces[best_match_index]["user_id"]
-        results.append({
-            "user_id": user_id,
-            "location": locations[i],
-            "encoding": unknown_encoding.tolist()
-        })
+        results.append(
+            {
+                "user_id": user_id,
+                "location": locations[i],
+                "encoding": unknown_encoding.tolist(),
+            }
+        )
 
     return {"results": results}
 
-# Checking faces of old alerts after adding a new user
-@app.post("/rematch")
-async def rematch_unknown_faces(data: dict):
-    user_id = data["user_id"]
-    embedding = np.array(data["embedding"])
-    alerts = data["unrecognized_alerts"]
-
-    if not alerts:
-        return {"status": "No alerts to process"}
-
-    alerts_encodings = [np.array(alert["embedding"]) for alert in alerts]
-
-    distances = face_recognition.face_distance(alerts_encodings, embedding)
-    indices = np.where(distances < TOLERANCE)[0]
-    matched_ids = [alerts[index]["id"] for index in indices]
-
-    return {"matched_ids": matched_ids}
 
 # Endpoint for Server to get an image's encoding
 @app.post("/encode")
@@ -64,6 +51,7 @@ async def encode_image(file: UploadFile):
     image = face_recognition.load_image_file(io.BytesIO(contents))
     encodings = face_recognition.face_encodings(image)
     return {"encodings": [e.tolist() for e in encodings]}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)

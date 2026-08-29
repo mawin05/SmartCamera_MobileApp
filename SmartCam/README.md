@@ -8,7 +8,7 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    
     In the file **constants/api.ts** change this line so it matches your server's URL:
     ```ts
-    export const API_URL = "http://192.168.1.X:8000";
+    export const API_URL = "http://192.168.X.X:8000";
     ````
 
 2. Install dependencies

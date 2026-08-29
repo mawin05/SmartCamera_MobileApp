@@ -8,18 +8,20 @@ Mobile application designed for an intelligent monitoring system
 2. Server - Central database and alert management
 3. Model - Face recognition service
 4. Camera - Script for handling the physical camera on a Raspberry Pi
+5. Redis - In-memory data store used for managing alert cooldowns to prevent notification spam
 
 ---
 
 ## Network & Communication
 - All components (App, Server, Model, Camera) must be connected to **the same local network**.
-- Current communication between modules is handled via the **HTTP** protocol.
+- Communication between modules is handled via the **HTTP** protocol (REST API) and **WebSockets** (for real-time UI updates).
 
 ---
 
 ## Getting Started
 Each component contains its own **README.md** with specific installation instructions. To start the entire system, follow these steps in order:
-1. Configure and start **Server**
+1. Start **Redis** server
+2. Configure and start **Server**
 2. Configure and start **Model**
 3. Launch **Smartcam** and open it on your phone
 4. Run the **Camera** script to begin sending images for analysis
