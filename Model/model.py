@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 
@@ -11,15 +12,10 @@ TOLERANCE = 0.50
 app = FastAPI()
 
 
-# Core function for recognizing faces
-# Takes all known encodes and an image
-# Returns results for all detected faces
-@app.post("/identify")
-async def identify(file: UploadFile = File(...), known_faces_json: str = Form(...)):
-    known_faces = json.loads(known_faces_json)
+# Separating the identification logic allows running it in a worker thread
+# without blocking the main event loop
+def _process_identification(contents: bytes, known_faces: list) -> list:
     known_encodes = [np.array(f["embedding"]) for f in known_faces]
-
-    contents = await file.read()
     image = face_recognition.load_image_file(io.BytesIO(contents))
     locations = face_recognition.face_locations(image)
     unknown_encodings = face_recognition.face_encodings(image, locations)
@@ -41,15 +37,33 @@ async def identify(file: UploadFile = File(...), known_faces_json: str = Form(..
             }
         )
 
+    return results
+
+
+# Core function for recognizing faces
+# Takes all known encodes and an image
+# Returns results for all detected faces
+@app.post("/identify")
+async def identify(file: UploadFile = File(...), known_faces_json: str = Form(...)):
+    known_faces = json.loads(known_faces_json)
+    contents = await file.read()
+    results = await asyncio.to_thread(_process_identification, contents, known_faces)
     return {"results": results}
+
+
+# Separating the encoding logic allows running it in a worker thread
+# without blocking the main event loop.
+def _process_encoding(contents: bytes):
+    image = face_recognition.load_image_file(io.BytesIO(contents))
+    encodings = face_recognition.face_encodings(image)
+    return encodings
 
 
 # Endpoint for Server to get an image's encoding
 @app.post("/encode")
 async def encode_image(file: UploadFile):
     contents = await file.read()
-    image = face_recognition.load_image_file(io.BytesIO(contents))
-    encodings = face_recognition.face_encodings(image)
+    encodings = await asyncio.to_thread(_process_encoding, contents)
     return {"encodings": [e.tolist() for e in encodings]}
 
 
