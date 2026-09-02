@@ -1,6 +1,5 @@
 import asyncio
 import io
-import json
 import os
 import shutil
 import time
@@ -236,11 +235,32 @@ async def add_user_image_logic(
     return new_template
 
 
+async def notify_model_sync(client: httpx.AsyncClient | None = None):
+    try:
+        if client and not isinstance(client, httpx.AsyncClient):
+            client = None
+
+        if client:
+            response = await client.post(f"{MODEL_URL}/sync")
+            response.raise_for_status()
+        else:
+            async with httpx.AsyncClient() as temp_client:
+                response = await temp_client.post(f"{MODEL_URL}/sync")
+                response.raise_for_status()
+    except httpx.HTTPError as e:
+        print(f"Error while connecting to the model: {e}")
+
+
 # Making it available for the model to get the embeddings of known users
 def get_templates(session: Session):
     statement = select(FaceTemplate)
     results = session.exec(statement).all()
     return [{"user_id": f.user_id, "embedding": f.embedding} for f in results]
+
+
+@app.get("/faces/templates")
+async def get_faces_templates(session: Session = Depends(get_session)):
+    return get_templates(session)
 
 
 # Displaying users in the mobile app
@@ -296,6 +316,8 @@ async def create_user(
     )
     full_user = session.exec(statement).first()
 
+    await notify_model_sync(client)
+
     return full_user
 
 
@@ -336,6 +358,8 @@ async def delete_user(user_id: int, session: Session = Depends(get_session)):
 
     session.delete(user_to_remove)
     session.commit()
+
+    await notify_model_sync()
 
     return {
         "message": f"User {user_id} and all their data removed",
@@ -381,6 +405,8 @@ async def add_user_image(
         )
     )
     updated_user = session.exec(statement).first()
+
+    await notify_model_sync(client)
 
     return updated_user
 
@@ -519,13 +545,11 @@ async def recognize_face(
     print(f"\n[RECOGNIZE] --- New request for session: {session_id} ---")
 
     contents = await file.read()
-    known_faces = get_templates(session)
-
     response = await client.post(
         f"{MODEL_URL}/identify",
-        data={"known_faces_json": json.dumps(known_faces)},
         files={"file": (file.filename, contents, file.content_type)},
     )
+    response.raise_for_status()
 
     results = response.json().get("results", [])
     print(f"[RECOGNIZE] Model returned {len(results)} recognized faces.")
@@ -542,6 +566,7 @@ async def recognize_face(
         return {"status": "processed", "result": "no_faces"}
 
     base_image = Image.open(io.BytesIO(contents))
+    new_template_added = False
 
     for i, res in enumerate(results):
         user_id = res["user_id"]
@@ -600,6 +625,7 @@ async def recognize_face(
             img_bytes.seek(0)
             # For temporary users add many faces for reference
             await add_user_image_logic(user_id, img_bytes, res["encoding"], session)
+            new_template_added = True
 
         status = f"user_{user_id}"
         image_name = f"{status}_{time_stamp}_{i}.jpg"
@@ -625,6 +651,9 @@ async def recognize_face(
             },
             session,
         )
+
+    if new_template_added:
+        await notify_model_sync(client)
 
     return {"status": "success"}
 
