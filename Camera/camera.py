@@ -1,5 +1,6 @@
-import subprocess
 import os
+import subprocess
+
 import requests
 from dotenv import load_dotenv
 
@@ -10,6 +11,7 @@ SERVER_URL = os.environ.get("SERVER_URL")
 if not SERVER_URL:
     raise RuntimeError("SERVER_URL not found, check README for instructions")
 
+
 def take_photo(filename):
     if os.path.exists(filename):
         os.remove(filename)
@@ -18,14 +20,21 @@ def take_photo(filename):
     try:
         # -n: brak podglądu, -o: wyjście, -t 1: czekaj 1ms (szybkie zdjęcie)
         # --immediate: nie czekaj na stabilizację (jeśli zależy Ci na czasie)
-        subprocess.run([
-            "rpicam-still",
-            "-o", filename,
-            "-n",
-            "-t", "500", # 500ms na ustawienie ostrości/światła
-            "--width", "1280",
-            "--height", "720"
-        ], check=True)
+        subprocess.run(
+            [
+                "rpicam-still",
+                "-o",
+                filename,
+                "-n",
+                "-t",
+                "500",  # 500ms na ustawienie ostrości/światła
+                "--width",
+                "1280",
+                "--height",
+                "720",
+            ],
+            check=True,
+        )
 
         if os.path.exists(filename):
             print("✅ Zdjęcie zapisane pomyślnie!")
@@ -35,6 +44,7 @@ def take_photo(filename):
 
     return False
 
+
 def send_to_model(session_id, filename):
     try:
         with open(filename, "rb") as f:
@@ -42,14 +52,16 @@ def send_to_model(session_id, filename):
             payload = {"session_id": session_id}
             print(f"📡 Wysyłanie do modelu: {SERVER_URL}/recognize...")
 
-            response = requests.post(f"{SERVER_URL}/recognize", files=files, data=payload)
+            response = requests.post(
+                f"{SERVER_URL}/recognize", files=files, data=payload, timeout=60
+            )
 
             if response.status_code == 200:
                 print("🚀 Model odebrał zdjęcie i rozpoczął analizę.")
             else:
                 print(f"⚠️ Serwer zwrócił błąd: {response.status_code} - {response.text}")
 
-    except Exception as e:
+    except requests.RequestException as e:
         print(f"❌ Nie udało się połączyć z modelem: {e}")
     finally:
         if os.path.exists(filename):
@@ -60,6 +72,7 @@ def execute(session_id, filename=TEMP_PHOTO):
     if take_photo(filename):
         send_to_model(session_id, filename)
     return True
+
 
 if __name__ == "__main__":
     test_session_id = "manual_test_session"

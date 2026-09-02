@@ -1,18 +1,20 @@
-from gpiozero import MotionSensor
 import secrets
-from signal import pause
-import camera
 import time
+from signal import pause
+
+import camera
+from gpiozero import MotionSensor
 
 pir = MotionSensor(25)
 is_capturing = False
+
 
 def movement_detected():
     global is_capturing
 
     if is_capturing:
         return
-    
+
     is_capturing = True
 
     session_id = secrets.token_hex(16)
@@ -24,11 +26,13 @@ def movement_detected():
 
     is_capturing = False
 
+
 def no_movement():
-    print('No movement...')
+    print("No movement...")
+
 
 pir.when_activated = movement_detected
 pir.when_deactivated = no_movement
 
-print('Sensor is ready')
+print("Sensor is ready")
 pause()

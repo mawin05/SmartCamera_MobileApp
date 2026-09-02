@@ -6,9 +6,9 @@ import shutil
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import List
 
 import httpx
+from database import Alert, AlertRead, FaceTemplate, User, UserRead, engine, get_session
 from dotenv import load_dotenv
 from fastapi import (
     Depends,
@@ -27,8 +27,6 @@ from PIL import Image, ImageDraw
 from redis.asyncio import Redis
 from sqlalchemy.orm import selectinload
 from sqlmodel import Session, SQLModel, col, delete, select
-
-from database import Alert, AlertRead, FaceTemplate, User, UserRead, engine, get_session
 
 
 # Manages active WebSocket connections to push real-time updates to the frontend
@@ -50,7 +48,7 @@ class ConnectionManager:
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
-            except Exception as _:
+            except Exception:  # noqa: BLE001
                 dead_connections.append(connection)
         for dead in dead_connections:
             self.disconnect(dead)
@@ -81,9 +79,7 @@ async def cleanup_alerts(interval_seconds: int, max_age_hours: int):
     while True:
         threshold = datetime.now() - timedelta(hours=max_age_hours)
         with Session(engine) as session:
-            old_alerts = session.exec(
-                select(Alert).where(Alert.created_at < threshold)
-            ).all()
+            old_alerts = session.exec(select(Alert).where(Alert.created_at < threshold)).all()
 
             if old_alerts:
                 deleted_alerts = []
@@ -92,7 +88,7 @@ async def cleanup_alerts(interval_seconds: int, max_age_hours: int):
                     if os.path.isfile(image_path):
                         try:
                             os.remove(image_path)
-                        except Exception as e:
+                        except OSError as e:
                             print(f"Could not delete file {image_path}: {e}")
                     deleted_alerts.append(old_alert.id)
 
@@ -202,7 +198,7 @@ async def get_encoding_from_model(client: httpx.AsyncClient, file: UploadFile):
         response = await client.post(f"{MODEL_URL}/encode", files=files)
         await file.seek(0)
         return response.json().get("encodings")
-    except Exception as e:
+    except httpx.HTTPError as e:
         print(f"Error while connecting to the model: {e}")
         return None
 
@@ -213,9 +209,7 @@ async def add_user_image_logic(
     face_encoding: list[float],
     session: Session,
 ):
-    new_template = FaceTemplate(
-        filepath="pending", user_id=user_id, embedding=face_encoding
-    )
+    new_template = FaceTemplate(filepath="pending", user_id=user_id, embedding=face_encoding)
     session.add(new_template)
     session.commit()
     session.refresh(new_template)
@@ -250,7 +244,7 @@ def get_templates(session: Session):
 
 
 # Displaying users in the mobile app
-@app.get("/users", response_model=List[UserRead])
+@app.get("/users", response_model=list[UserRead])
 async def get_users(session: Session = Depends(get_session)):
     """Zwraca listę wszystkich użytkowników."""
     statement = select(User).options(
@@ -328,7 +322,7 @@ async def delete_user(user_id: int, session: Session = Depends(get_session)):
     if os.path.exists(folder_path):
         try:
             shutil.rmtree(folder_path)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"Błąd przy usuwaniu plików: {e}")
 
     for alert in user_to_remove.alerts:
@@ -406,7 +400,7 @@ async def get_user(user_id: int, session: Session = Depends(get_session)):
 
 
 # Returns the list of all alerts
-@app.get("/alerts", response_model=List[AlertRead])
+@app.get("/alerts", response_model=list[AlertRead])
 async def get_alerts(session: Session = Depends(get_session)):
     return session.exec(select(Alert).order_by(col(Alert.id).desc())).all()
 
@@ -446,7 +440,6 @@ async def mark_as_read(alert_id: int, session: Session = Depends(get_session)):
 async def delete_alert(
     alert_id: int, auto_commit: bool = True, session: Session = Depends(get_session)
 ):
-
     alert_to_remove = session.get(Alert, alert_id)
 
     if not alert_to_remove:
@@ -478,9 +471,7 @@ async def delete_alert(
 
 # Upgrading a temporary user to a permanent one and updating their old alerts
 @app.patch("/users/{user_id}")
-async def save_temporary_user(
-    user_id: int, name: str, session: Session = Depends(get_session)
-):
+async def save_temporary_user(user_id: int, name: str, session: Session = Depends(get_session)):
     user = session.get(User, user_id, options=[selectinload(User.alerts)])  # type: ignore
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -545,9 +536,7 @@ async def recognize_face(
     time_stamp = now.strftime("%d.%m.%Y_%H-%M-%S")
 
     if not results:
-        print(
-            "[RECOGNIZE] Decision: No faces detected. Saving empty image and exiting."
-        )
+        print("[RECOGNIZE] Decision: No faces detected. Saving empty image and exiting.")
         image_name = f"empty_{time_stamp}.jpg"
         save_image_to_disk(image_name, contents)
         return {"status": "processed", "result": "no_faces"}
@@ -556,9 +545,7 @@ async def recognize_face(
 
     for i, res in enumerate(results):
         user_id = res["user_id"]
-        print(
-            f"[RECOGNIZE] Processing face {i + 1}/{len(results)}. Returned ID: {user_id}"
-        )
+        print(f"[RECOGNIZE] Processing face {i + 1}/{len(results)}. Returned ID: {user_id}")
 
         top, right, bottom, left = res["location"]
 
@@ -577,9 +564,7 @@ async def recognize_face(
             user_id = new_user.id
             print(f"[RECOGNIZE] Success: Created new user with ID: {user_id}")
 
-        print(
-            f"[RECOGNIZE] Checking for session duplication [{session_id}] for ID: {user_id}..."
-        )
+        print(f"[RECOGNIZE] Checking for session duplication [{session_id}] for ID: {user_id}...")
         if not await mark_recognised(session_id, user_id):
             print(
                 f"[RECOGNIZE] Rejected: User {user_id} already recognized in this session. Skipping."
@@ -591,17 +576,13 @@ async def recognize_face(
         cooldown_created = await redis.set(cooldown_key, "active", nx=True, ex=300)
 
         if not cooldown_created:
-            print(
-                f"[RECOGNIZE] Rejected: Active cooldown (5 min) for user {user_id}. Skipping."
-            )
+            print(f"[RECOGNIZE] Rejected: Active cooldown (5 min) for user {user_id}. Skipping.")
             continue
 
         user = session.get(User, user_id)
 
         if not user:
-            print(
-                f"[RECOGNIZE] Error: User {user_id} does not exist in the database! Skipping."
-            )
+            print(f"[RECOGNIZE] Error: User {user_id} does not exist in the database! Skipping.")
             continue
         print(
             f"[RECOGNIZE] Decision: User {user.name} qualified for an alert. Trusted status: {user.is_trusted}"
